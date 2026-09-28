@@ -1,29 +1,56 @@
 "use client";
 import { useState } from "react";
+import type { Concert } from "@/lib/types";
 
 export default function HomePage() {
   const [query, setQuery] = useState("");
-  const [searched, setSearched] = useState("");
+  const [concerts, setConcerts] = useState<Concert[]>([]);
 
-  function handleSearch(e: React.FormEvent<HTMLFormElement>) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSearched(query.trim());
+    const artist = query.trim();
+    if (!artist) return;
+    setLoading(true);
+    setError("");
+
+    try {
+     const res = await fetch(`/api/search?artist=${encodeURIComponent(artist)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setConcerts(data.concerts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setConcerts([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <div>    
-      <h1>encore</h1>
-      <p>see all the songs you've heard live</p>
+    <div>
+      <h1>Encore</h1>
+      <p>See all the songs you&apos;ve heard live</p>
+ 
       <form onSubmit={handleSearch}>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-
-          placeholder="search for a song"
-        />
-        <button type="submit">search</button>
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Artist name" />
+        <button type="submit" disabled={loading}>
+          {loading ? "Searching..." : "Search"}
+        </button>
       </form>
-      {searched && <p>You searched for: {searched}</p>}
+ 
+      {error && <p style={{ color: "red" }}>{error}</p>}
+ 
+      {/* .map() turns each concert object into an <li>. key helps React track which item is which. */}
+      <ul>
+        {concerts.map((c) => (
+          <li key={c.id}>
+            {c.date}: {c.artist} at {c.venue} ({c.songCount} songs)
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
