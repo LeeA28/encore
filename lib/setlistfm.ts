@@ -21,11 +21,18 @@ export type SetlistFmSetlist = {
   sets: { set: { song?: SetlistFmSong[] }[] };
 };
 
-type SearchResponse = {
+export type SearchResponse = {
   total: number; // how many setlists match in total
   page: number; // which page this is
   itemsPerPage: number; // setlist.fm sends 20 per page
   setlist: SetlistFmSetlist[];
+};
+
+export type SearchOptions = {
+  artistName: string;
+  year?: string;
+  cityName?: string;
+  page?: number;
 };
 
 // A custom error that remembers an HTTP status code, so the route can pass it along
@@ -35,7 +42,7 @@ export class SetlistFmError extends Error {
   }
 }
 
-export async function searchSetlists(artistName: string): Promise<SearchResponse> {
+export async function searchSetlists(options: SearchOptions): Promise<SearchResponse> {
   // process.env reads values from .env.local. This only works on the server.
   const apiKey = process.env.SETLISTFM_API_KEY;
   if (!apiKey) {
@@ -43,10 +50,11 @@ export async function searchSetlists(artistName: string): Promise<SearchResponse
   }
 
   // URLSearchParams builds "?artistName=...&p=1" and safely encodes spaces and symbols
-  const params = new URLSearchParams({ artistName, p: "1" });
+  const params = new URLSearchParams({ artistName: options.artistName, p: String(options.page ?? 1) });
+  if (options.year) params.set("year", options.year);
+  if (options.cityName) params.set("cityName", options.cityName);
 
   const res = await fetch(`${BASE_URL}/search/setlists?${params}`, {
-    // Headers are extra info sent along with the request
     headers: {
       "x-api-key": apiKey, // proves who we are
       Accept: "application/json", // asks for JSON (setlist.fm sends XML by default)
