@@ -1,6 +1,7 @@
 "use client";
 
 import type { SongCount } from "@/lib/types";
+import { NoteIcon } from "./Icons";
 
 type Props = {
   songs: SongCount[];
@@ -8,29 +9,50 @@ type Props = {
 };
 
 export default function SongList({ songs, concertCount }: Props) {
-  if (songs.length === 0) {
-    return <p>Add some concerts in the Concerts tab first.</p>;
-  }
-
   // Total performances heard = the sum of every song's count
   const totalHeard = songs.reduce((sum, s) => sum + s.timesHeard, 0);
 
   return (
-    <section>
-      <h2>Most heard live</h2>
-      <p>
-        {concertCount} concerts, {totalHeard} songs heard, {songs.length} different songs
-      </p>
-      {/* Placeholder until the Spotify phase */}
-      <button onClick={() => alert("Spotify playlists are coming in Phase 3.")}>Make a playlist</button>
-      <ol>
-        {songs.map((s) => (
-          <li key={s.key}>
-            {s.name} by {s.artist}
-            {s.coverOf && ` (cover of ${s.coverOf})`}: {s.timesHeard}x
-          </li>
-        ))}
-      </ol>
+    <section className="card">
+      <div className="card-header">
+        <div className="icon-badge" style={{ background: "var(--teal)" }}>
+          <NoteIcon />
+        </div>
+        <h1 className="card-title">songs</h1>
+      </div>
+      <p className="card-desc">Every song you&apos;ve heard live, from most heard to least.</p>
+
+      {songs.length === 0 ? (
+        <p className="notice">Add some concerts in the concerts tab first.</p>
+      ) : (
+        <>
+          <div className="stats">
+            <span className="pill">{concertCount} concerts</span>
+            <span className="pill">{totalHeard} songs heard</span>
+            <span className="pill">{songs.length} different songs</span>
+          </div>
+          {/* Placeholder until playlists are built */}
+          <button className="btn btn-light" onClick={() => alert("Spotify playlists are coming soon.")}>
+            Make a playlist
+          </button>
+
+          <ol className="song-rows" style={{ marginTop: 20 }}>
+            {songs.map((s, i) => (
+              <li key={s.key} className="song-row">
+                <span className="song-rank">{i + 1}</span>
+                <div className="song-info">
+                  <div className="song-name">{s.name}</div>
+                  <div className="song-artist">
+                    {s.artist}
+                    {s.coverOf && ` · cover of ${s.coverOf}`}
+                  </div>
+                </div>
+                <span className="count-pill">{s.timesHeard}×</span>
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
     </section>
   );
 }

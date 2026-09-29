@@ -1,4 +1,4 @@
-// GET /api/search?artist=...&year=...&city=...&page=...
+// GET /api/search?artist=...&year=...&city=...&country=...&page=...
 // Runs only on the server: asks setlist.fm for concerts, then sends back simplified results.
 
 import { NextRequest, NextResponse } from "next/server";
@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
       artistName: artist,
       year: params.get("year")?.trim() || undefined, // empty text becomes "not provided"
       cityName: params.get("city")?.trim() || undefined,
+      countryCode: params.get("country") || undefined,
       page: Number(params.get("page")) || 1,
     });
 

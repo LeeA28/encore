@@ -20,6 +20,11 @@ export function formatDate(isoDate: string): string {
   return date.toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" });
 }
 
+// "Danforth Music Hall, Toronto, Canada" (skipping any parts that are missing)
+export function formatPlace(c: Concert): string {
+  return [c.venue, c.city, c.country].filter(Boolean).join(", ");
+}
+
 // Turns one raw setlist.fm setlist into Encore's simpler Concert shape
 export function toConcert(s: SetlistFmSetlist): Concert {
   const songs: Song[] = s.sets.set
@@ -33,6 +38,7 @@ export function toConcert(s: SetlistFmSetlist): Concert {
     artist: s.artist.name,
     venue: s.venue.name,
     city: s.venue.city?.name ?? "", // "?." stops safely if city is missing, then "??" gives ""
+    country: s.venue.city?.country?.name,
     url: s.url,
     songs,
   };

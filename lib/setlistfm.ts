@@ -17,7 +17,10 @@ export type SetlistFmSetlist = {
   eventDate: string; // format "dd-MM-yyyy", e.g. "14-03-2025"
   url: string; // link to this setlist on setlist.fm
   artist: { name: string };
-  venue: { name: string; city?: { name: string } };
+  venue: {
+    name: string;
+    city?: { name: string; country?: { code: string; name: string } };
+  };
   sets: { set: { song?: SetlistFmSong[] }[] };
 };
 
@@ -32,6 +35,7 @@ export type SearchOptions = {
   artistName: string;
   year?: string;
   cityName?: string;
+  countryCode?: string; // 2-letter code like "CA"
   page?: number;
 };
 
@@ -53,6 +57,7 @@ export async function searchSetlists(options: SearchOptions): Promise<SearchResp
   const params = new URLSearchParams({ artistName: options.artistName, p: String(options.page ?? 1) });
   if (options.year) params.set("year", options.year);
   if (options.cityName) params.set("cityName", options.cityName);
+  if (options.countryCode) params.set("countryCode", options.countryCode);
 
   const res = await fetch(`${BASE_URL}/search/setlists?${params}`, {
     headers: {
