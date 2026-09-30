@@ -12,7 +12,6 @@ type AlbumResult = { id: string; name: string; artist?: string; type?: string; y
 type Props = {
   onAdd: (items: RankItem[]) => void;
   existingKeys: Set<string>; // songs already in the list, so we can show "Added"
-  onDisconnect: () => void;
 };
 
 // A small helper: fetch JSON from our own API, and turn error responses into thrown errors
@@ -23,7 +22,7 @@ async function getJson<T>(url: string): Promise<T> {
   return data;
 }
 
-export default function SpotifyAdder({ onAdd, existingKeys, onDisconnect }: Props) {
+export default function SpotifyAdder({ onAdd, existingKeys }: Props) {
   const [type, setType] = useState<SearchType>("artist");
   const [query, setQuery] = useState("");
   const [artists, setArtists] = useState<ArtistResult[]>([]);
@@ -108,11 +107,8 @@ export default function SpotifyAdder({ onAdd, existingKeys, onDisconnect }: Prop
 
   return (
     <div className="panel">
-      <div className="card-header" style={{ marginBottom: 12 }}>
+      <div style={{ marginBottom: 12 }}>
         <strong>Add songs from Spotify</strong>
-        <button className="btn btn-ghost btn-small" style={{ marginLeft: "auto" }} onClick={onDisconnect}>
-          Disconnect
-        </button>
       </div>
 
       <form className="form-row" onSubmit={handleSearch}>

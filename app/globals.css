@@ -29,6 +29,7 @@
   --teal: #1fcfc6;
   --indigo: #5e5ce6;
   --pink: #ff5ad2;
+  --spotify-green: #1db954;
 
   /* Shape */
   --radius-lg: 24px;
@@ -114,6 +115,79 @@ select {
 
 .nav-link.active {
   font-weight: 600;
+}
+
+/* Pushes the Spotify and log in buttons to the far right of the header */
+.header-right {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* A light button for the page background (not on a dark card) */
+.btn-outline {
+  background: #ffffff;
+  color: var(--text);
+  border: 1px solid #d4d4d8;
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: #ececef;
+}
+
+.btn-spotify {
+  background: var(--spotify-green);
+  color: #111111; /* dark text reads better on this green than white */
+}
+
+.btn-spotify:hover:not(:disabled) {
+  background: #1ed760;
+}
+
+.top-error {
+  background: #ffe5e8;
+  color: #b00020;
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+
+/* ---------- Pop-up (modal) ---------- */
+
+/* The dimmed layer covering the whole page behind the pop-up */
+.modal-backdrop {
+  position: fixed;
+  inset: 0; /* shorthand for top: 0, right: 0, bottom: 0, left: 0 */
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  z-index: 100; /* sit above everything else on the page */
+}
+
+.modal {
+  width: 100%;
+  max-width: 420px;
+  margin-bottom: 0;
+}
+
+.top-notice {
+  background: #e3f8ec;
+  color: #0b6b37;
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+
+/* The logged-in email in the header, cut off with "..." if it's long */
+.user-email {
+  color: var(--text-muted);
+  font-size: 14px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tagline {
@@ -627,9 +701,13 @@ details ol {
 
 @media (max-width: 640px) {
   .site-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+  }
+
+  .nav {
+    order: 3; /* on phones: logo and Spotify button on the first line, tabs below */
+    width: 100%;
   }
 
   .card {

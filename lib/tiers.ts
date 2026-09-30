@@ -1,4 +1,4 @@
-// Pure functions for the S/A/B/C/D tier list and the optional "Sort this tier" questions.
+// Pure functions for the S/A/B/C/D tier list.
 
 import type { RankItem } from "./types";
 
@@ -42,64 +42,6 @@ export function moveToTier(tiers: Tiers, key: string, tier: TierName): Tiers {
   const next = removeFromTiers(tiers, key);
   next[tier] = [...next[tier], key];
   return next;
-}
-
-// ---------------------------------------------------------------------------------------
-// "Sort this tier": binary insertion with "which do you like more?" questions.
-// Songs are placed one at a time into a growing sorted list. Each answer halves the range
-// of positions (lo to hi) where the current song could go, until only one position is left.
-// ---------------------------------------------------------------------------------------
-
-export type SortSession = {
-  tier: TierName;
-  sorted: string[]; // songs already placed, best first
-  pending: string[]; // songs still waiting to be placed
-  current: string; // the song being placed right now
-  lo: number;
-  hi: number;
-};
-
-export type SortChoice = "current" | "opponent" | "tie";
-
-// Take the next pending song and start placing it (it could go anywhere: positions 0 to sorted.length)
-function nextSong(tier: TierName, sorted: string[], pending: string[]): SortSession | string[] {
-  if (pending.length === 0) return sorted; // everything placed: return the finished order
-  const [current, ...rest] = pending;
-  return { tier, sorted, pending: rest, current, lo: 0, hi: sorted.length };
-}
-
-// Returns a session, or null if the tier has fewer than 2 songs (nothing to sort)
-export function startSort(tier: TierName, keys: string[]): SortSession | null {
-  if (keys.length < 2) return null;
-  // The first song starts the sorted list; every other song gets placed by questions
-  return nextSong(tier, [keys[0]], keys.slice(1)) as SortSession;
-}
-
-// The song to compare against: the middle of the remaining range
-export function opponentOf(s: SortSession): string {
-  return s.sorted[Math.floor((s.lo + s.hi) / 2)];
-}
-
-// Apply one answer. Returns the updated session, or the finished order (an array) when done.
-export function answerSort(s: SortSession, choice: SortChoice): SortSession | string[] {
-  const mid = Math.floor((s.lo + s.hi) / 2);
-
-  let lo = s.lo;
-  let hi = s.hi;
-  if (choice === "tie") {
-    lo = hi = mid + 1; // "too close to call": place it right below the song it was compared to
-  } else if (choice === "current") {
-    hi = mid; // liked the new song more: it goes above the middle song
-  } else {
-    lo = mid + 1; // liked it less: it goes below the middle song
-  }
-
-  if (lo < hi) return { ...s, lo, hi }; // still more than one possible position: ask again
-
-  // One position left: insert the song there, then move on to the next song
-  const sorted = [...s.sorted];
-  sorted.splice(lo, 0, s.current);
-  return nextSong(s.tier, sorted, s.pending);
 }
 
 // Each tier's solid color (defined as CSS variables in globals.css)

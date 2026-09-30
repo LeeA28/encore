@@ -14,6 +14,7 @@ export const COOKIE = {
   refresh: "spotify_refresh_token",
   expires: "spotify_expires_at",
   state: "spotify_auth_state",
+  returnTab: "spotify_return_tab",
 };
 
 // What Encore asks permission for. Browsing albums needs no special scope; these are for making playlists later.

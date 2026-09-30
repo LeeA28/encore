@@ -4,15 +4,19 @@
 
 import { useMemo, useState } from "react";
 import type { RankItem, SongCount } from "@/lib/types";
-import { emptyTiers, type Tiers } from "@/lib/tiers";
-import { useLocalStorage } from "@/lib/useLocalStorage";
+import type { EncoreDataApi } from "@/lib/useEncoreData";
 import TierBoard from "./TierBoard";
 import CustomLists from "./CustomLists";
 import { StackIcon } from "./Icons";
 
-export default function RankTab({ songs }: { songs: SongCount[] }) {
+type Props = {
+  songs: SongCount[];
+  data: EncoreDataApi;
+  spotifyConnected: boolean | null;
+};
+
+export default function RankTab({ songs, data, spotifyConnected }: Props) {
   const [mode, setMode] = useState<"live" | "custom">("live");
-  const [liveTiers, setLiveTiers] = useLocalStorage<Tiers>("encore:liveTiers", emptyTiers());
 
   // Turn the song counts into tier-list items
   const liveItems: RankItem[] = useMemo(
@@ -28,7 +32,7 @@ export default function RankTab({ songs }: { songs: SongCount[] }) {
         </div>
         <h1 className="card-title">rank</h1>
       </div>
-      <p className="card-desc">Drag songs into tiers. Sort any tier with quick this-or-that questions.</p>
+      <p className="card-desc">Drag songs into tiers, or tap a letter to place them quickly.</p>
 
       <div className="segmented">
         <button className={mode === "live" ? "active" : ""} onClick={() => setMode("live")}>
@@ -41,11 +45,11 @@ export default function RankTab({ songs }: { songs: SongCount[] }) {
 
       {mode === "live" &&
         (liveItems.length > 0 ? (
-          <TierBoard items={liveItems} tiers={liveTiers} onChange={setLiveTiers} />
+          <TierBoard items={liveItems} tiers={data.liveTiers} onChange={data.setLiveTiers} />
         ) : (
           <p className="notice">Add some concerts in the concerts tab first.</p>
         ))}
-      {mode === "custom" && <CustomLists />}
+      {mode === "custom" && <CustomLists data={data} spotifyConnected={spotifyConnected} />}
     </section>
   );
 }

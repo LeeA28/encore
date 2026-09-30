@@ -10,7 +10,8 @@ A complete walkthrough of how Encore works, step by step, so you can read throug
 - Delete these old files, which were replaced:
   - `components/RankSongs.tsx` (replaced by `RankTab.tsx`, `TierBoard.tsx`, and friends)
   - `lib/ranking.ts` (replaced by `lib/tiers.ts`)
-- Install the drag-and-drop library: `npm install @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities`
+- Install the libraries: `npm install @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities @supabase/supabase-js @supabase/ssr`
+- Delete `lib/useLocalStorage.ts` (replaced by `lib/useEncoreData.ts`)
 - Add the Spotify settings to `.env.local` (see "Setting up Spotify" below). `.env.local.example` shows every line you need
 - Restart the dev server (`Ctrl+C`, then `npm run dev`), then open **`http://127.0.0.1:3000`** (not `localhost`, see below)
 - Commit when it works: `git add .`, `git commit -m "Add tier lists, custom lists, Spotify, and country filter"`, `git push`
@@ -40,6 +41,17 @@ A complete walkthrough of how Encore works, step by step, so you can read throug
 
 ---
 
+## Setting up Supabase (accounts)
+
+- Create a project at supabase.com, and save the database password somewhere safe
+- Create the tables: SQL Editor → New query → paste all of `supabase/schema.sql` → Run
+  - You should see "Success. No rows returned." The three tables then appear under Table Editor
+- Turn off email confirmation while developing: Authentication → Sign In / Providers → Email → switch off "Confirm email" (turn it back on before launching)
+- Set the Site URL: Authentication → URL Configuration → `http://127.0.0.1:3000`
+- Add to `.env.local`, then restart the dev server:
+  - `NEXT_PUBLIC_SUPABASE_URL=` the Project URL
+  - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=` the publishable key (API Keys; "Create new API Keys" if there isn't one)
+
 ## The big picture
 
 ### What the user does
@@ -49,9 +61,9 @@ A complete walkthrough of how Encore works, step by step, so you can read throug
 - **Rank tab**, with two modes:
   - **Songs I've heard live**: an S/A/B/C/D tier list of every song from your concerts
   - **Custom lists**: named lists filled with any songs from Spotify (a full discography, chosen albums, or single songs), each with its own tier list
-  - Songs can be dragged within and between tiers, and each tier has an optional "Sort this tier" mode that asks "which do you like more?"
+  - Songs can be dragged within and between tiers, or placed quickly with S/A/B/C/D buttons
 - Concert search can be filtered by year, city, and country
-- Everything is saved in the browser, so it survives refreshes (Spotify login is saved in secure cookies)
+- Logged out ("guest"), everything is saved in the browser. Logged in, everything is saved to your account in Supabase, so it follows you across devices (Spotify login is separate, saved in secure cookies)
 
 ### How data flows through the app
 
@@ -84,12 +96,14 @@ app/
   api/spotify/tracks         Server: one album's songs
   api/spotify/discography    Server: every song an artist has released, duplicates removed
 components/
-  EncoreApp.tsx              Top-level: owns saved concerts, switches between tabs
+  EncoreApp.tsx              Top-level: header, tabs, who's logged in, Spotify connection
   ConcertSearch.tsx          Concerts tab: search (with country dropdown), results, your concerts
   SongList.tsx               Songs tab: most-heard list with counts
   RankTab.tsx                Rank tab: switches between live songs and custom lists
   TierBoard.tsx              The drag-and-drop S/A/B/C/D tier list (used by both modes)
-  CustomLists.tsx            Create, pick, and delete custom lists; connect Spotify
+  Workspace.tsx              Owns the user's data (via useEncoreData) and shows the current tab
+  AuthModal.tsx              The log in / sign up pop-up
+  CustomLists.tsx            Create, pick, and delete custom lists
   SpotifyAdder.tsx           Search Spotify and add songs to a custom list
   Icons.tsx                  Small hand-drawn SVG icons (logo, ticket, note, tier stack)
 lib/
@@ -98,13 +112,19 @@ lib/
   concerts.ts                Pure: raw setlist.fm data → Concert, date and place formatting
   countries.ts               The country list for the dropdown
   songs.ts                   Pure: counting songs across concerts, normalizing names
-  tiers.ts                   Pure: tier list logic and "Sort this tier" (binary insertion)
+  tiers.ts                   Pure: tier list logic and tier colors
   music.ts                   Pure: Spotify tracks → rankable items, cleaning titles, removing duplicates
   spotifyAuth.ts             Server-only: Spotify login, token cookies, refreshing tokens
   spotify.ts                 Server-only: calls to Spotify's Web API
   spotifyRoute.ts            Server-only: shared error handling for the Spotify routes
-  useLocalStorage.ts         Custom hook: useState that also saves to localStorage
+  useEncoreData.ts           Custom hook: all user data, saved to the browser (guest) or Supabase (logged in)
+  guestData.ts               Reading, writing, and clearing guest data in localStorage
+  accountData.ts             Reading and saving data in Supabase, and merging guest data into an account
+  supabase/client.ts         Creates the Supabase client used in the browser
+  supabase/proxy.ts          Refreshes login sessions (used by /proxy.ts)
 next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotify login)
+proxy.ts                     Runs before each page request: keeps the Supabase login fresh
+supabase/schema.sql          The database tables and security rules (paste into Supabase's SQL editor)
 ```
 
 - A pattern to notice: `lib/` holds logic (no UI), `components/` holds UI (little logic), `app/` holds pages and routes
@@ -317,7 +337,7 @@ next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotif
 
 ### What you built
 
-- An S/A/B/C/D tier list (`TierBoard.tsx`), with drag and drop, quick tier buttons, and "Sort this tier"
+- An S/A/B/C/D tier list (`TierBoard.tsx`), with drag and drop and quick tier buttons
 - It replaced the first "which do you like more?" ranking, because comparing two favorites head to head is hard, and fully ranking everything takes many questions
 
 ### Why tiers: the math
@@ -329,7 +349,7 @@ next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotif
     - log₂(100!) = 363.74 ÷ 0.6931 ≈ 524.8
   - So about 525 questions minimum, for any pairwise method, in the worst case
 - A tier list needs just 100 decisions (one per song), and each is easier: judging one song on its own ("is this an S?") instead of comparing two
-- "Sort this tier" stays optional, for people who want a precise order within a tier
+- An optional "Sort this tier" mode (binary insertion with "which do you like more?" questions) was built and later removed to keep ranking simple: dragging within a tier covers precise ordering. It's still in your Git history if you ever want it back
 
 ### How the tier list is stored
 
@@ -371,29 +391,6 @@ next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotif
   - The whole tier row, including its label, is a drop target, and it's highlighted while you're over it
 - **`noDrag`** on buttons inside a card stops their events from reaching the card, so pressing S/A/B/C/D or × doesn't start a drag
 
-### "Sort this tier" (binary insertion)
-
-- Songs are placed one at a time into a growing sorted list
-  - The first song starts the list
-  - Each next song is compared to the song in the middle of its possible range (`lo` to `hi`)
-    - Like the new song more → it goes above the middle, so `hi = mid` (bottom half ruled out)
-    - Like it less → it goes below the middle, so `lo = mid + 1` (top half ruled out)
-    - "Too close to call" → it goes right below the song it was compared to, and questions for that song end early
-  - When `lo == hi`, only one position is left, and it's inserted there
-- Placing a song among *k* already-sorted songs takes at most ⌈log₂(*k* + 1)⌉ questions
-  - Example, a tier of 20 songs, where *m* is the number of sorted songs after adding each one:
-    - *m* = 1: 0 × 1 = 0
-    - *m* = 2: 1 × 1 = 1
-    - *m* = 3–4: 2 × 2 = 4
-    - *m* = 5–8: 3 × 4 = 12
-    - *m* = 9–16: 4 × 8 = 32
-    - *m* = 17–20: 5 × 4 = 20
-    - Total: 0 + 1 + 4 + 12 + 32 + 20 = **69 questions at most**
-- Tested with 10 songs in scrambled order: it rebuilt the correct order in 20 questions
-- **Union return types**: `answerSort` returns either a session (more questions to ask) or an array (the finished order). `Array.isArray(result)` tells them apart
-- Dragging is turned off while sorting, because the sort keeps track of positions, and moving songs would make those positions wrong
-- Cancel keeps the old order, since the new order is only saved at the very end
-
 ---
 
 ## Step 9: Countries
@@ -433,6 +430,21 @@ next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotif
   - Why: if a malicious script ever ran on the page, it still couldn't steal the tokens
   - That's also why the page asks `/api/spotify/status` whether it's connected, instead of checking the cookie itself
 - `getAccessToken()` checks the expiry time, and if the access token is expired (or within a minute of it), quietly uses the refresh token to get a new one
+
+### The Spotify button in the header
+
+- Top right: an outlined "Connect Spotify" pill when not connected, and a Spotify-green "Spotify connected" pill when connected (clicking it asks to disconnect)
+- Next to it, a black "Log in" pill for Encore accounts. For now it opens a "coming soon" pop-up; Phase 2 (Supabase) makes it real
+  - Spotify and Encore accounts are separate on purpose: Spotify only powers music browsing and playlists, while an Encore account will save your data across devices
+- **The pop-up (modal)**: a dimmed layer (`.modal-backdrop`, `position: fixed; inset: 0`) covers the page, with a card in the middle
+  - Clicking the dimmed layer closes it. Clicks inside the card call `e.stopPropagation()`, which stops the click from "bubbling up" to the dimmed layer, so clicking the card doesn't close it
+  - `z-index: 100` keeps it above everything else on the page
+- The connection status lives in `EncoreApp`, the top-level component, because both the header and custom lists need it ("lifting state up"). It's checked once when the page loads
+- "Connect Spotify" is a normal link, not a `fetch`, because logging in means actually visiting Spotify's website
+- `?returnTo=songs` on the login link is saved in a short-lived cookie, and the callback sends you back to that tab
+  - Only the three known tab names are accepted, so the value can't be abused to redirect somewhere unexpected (an "open redirect")
+- After returning, `window.history.replaceState` cleans `?tab=...&spotifyError=...` out of the address bar, so refreshing doesn't show an old error again
+  - It changes the URL without reloading the page
 
 ### How the Spotify API is used
 
@@ -487,12 +499,71 @@ next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotif
   - The negative "spread" value (like `-30px`) pulls the shadow in from the sides, so it mostly shows below the card, as if lit from above
 - **The card background** is a subtle gradient (`linear-gradient(165deg, #1e1e20, #0f0f10)`), which reads as "solid dark" but has a bit of depth
 - **Responsive**: `@media (max-width: 640px)` shrinks padding, titles, and tier letters on phones. The concert grid uses `repeat(auto-fill, minmax(290px, 1fr))`, which fits as many 290px+ columns as the screen allows
+- **Spotify green**: `--spotify-green: #1db954` with dark text on top, since dark text has better contrast on that shade than white
 - **Icons** (`components/Icons.tsx`) are small hand-drawn SVGs that use `currentColor`, so they automatically take the text color of whatever they sit inside
 
 ### Why plain CSS (for now)
 
 - No new tools to learn, and it keeps styles readable in one place
 - Tailwind is an option later (it's popular in job postings); switching would mean replacing these classes with Tailwind utility classes in the JSX
+
+---
+
+## Step 12: Accounts with Supabase (Phase 2)
+
+### What you built
+
+- Email and password accounts. Logged in, your concerts, live tiers, and custom lists save to a Postgres database, so they're available on any device
+- Guests still work exactly as before, saving in the browser
+- When a guest logs in, their browser data is moved into their account
+
+### The database (`supabase/schema.sql`)
+
+- Three tables:
+  - `concerts`: one row per concert a user added. Details are real columns (date, artist, venue, city, country, link); the song list is JSON
+    - Why the mix: concert details are fixed, simple fields that fit columns, while songs are only ever used as a whole list, so JSON keeps them simple
+    - `primary key (user_id, setlist_id)`: a *composite* key, meaning a user can add each concert only once, but different users can add the same concert
+  - `live_tiers`: one row per user, with their tiers as JSON
+  - `custom_lists`: one row per list
+- `references auth.users (id) on delete cascade`: every row belongs to a user in Supabase's built-in users table, and deleting a user deletes their rows automatically
+- `default auth.uid()`: if `user_id` isn't given, Postgres fills in the ID of whoever sent the request
+
+### Security: Row Level Security (RLS)
+
+- The URL and publishable key are in browser code on purpose (`NEXT_PUBLIC_` variables are sent to the browser), so anyone could send requests to the database
+- RLS makes Postgres itself check every request: each policy says a logged-in user can only read or change rows where `user_id` is their own ID
+  - `using (...)` checks which existing rows you can see or change; `with check (...)` checks what new or updated rows are allowed to look like
+  - `(select auth.uid())` is written with `select` around it because Supabase recommends it: Postgres then calculates it once per request instead of once per row
+- Result: even a hand-written request with the public key can't touch anyone else's data. This is what makes it safe for the browser to talk to the database directly, with no API routes in between
+- Logged-out visitors (`anon`) get no access to these tables at all
+
+### How login works
+
+- `AuthModal` calls `supabase.auth.signInWithPassword` or `supabase.auth.signUp`
+  - With email confirmation off, signing up logs you in immediately. When it's turned on later, `signUp` returns no session, and the pop-up asks the user to check their email instead (already handled)
+- Supabase stores the login in cookies. `proxy.ts` (called `middleware.ts` before Next.js 16) runs on the server before each page request and refreshes the login when it's about to expire
+- `EncoreApp` asks `supabase.auth.getUser()` who's logged in when the page loads, then listens with `onAuthStateChange` for logging in and out
+  - `user` has three states: `undefined` (still checking), `null` (guest), or the user. Nothing below the header shows while it's `undefined`, so you never see a flash of guest data before an account loads
+
+### One hook for all data (`useEncoreData`)
+
+- Components call the same functions (`addConcert`, `setLiveTiers`, `updateList`...) whether you're logged in or not, and the hook decides where to save
+  - Guest: effects write each change to `localStorage`
+  - Logged in: each action updates the screen immediately, then saves to Supabase in the background (an "optimistic update"), showing an error banner if the save fails
+- **Resetting with `key`**: `<Workspace key={user?.id ?? "guest"} ...>`. When the key changes (logging in, out, or switching accounts), React throws away the old component and its state and creates a fresh one
+  - This is simpler and safer than manually clearing every piece of state, and it guarantees one person's data never shows up in another's session
+- **Debouncing**: tier dragging can change things many times per second. Tier and list saves wait until changes stop for 800ms, then save once. Each list has its own timer, so editing one list doesn't delay another
+  - Before logging out, `flush()` saves anything still waiting, so a drag right before logging out isn't lost. `EncoreApp` reaches this function through a ref (`flushRef`), since the function lives inside `Workspace`
+- `Promise.all` loads the three tables at the same time instead of one after another
+- `let cancelled = false` in the loading effect: if the component is thrown away mid-load (say, a quick log out), the late results are ignored instead of updating a component that no longer exists
+
+### Moving guest data into an account (`mergeGuestData`)
+
+- Concerts: `upsert` with `ignoreDuplicates`, so concerts the account already has are skipped
+- Live tiers: only copied if the account has none, so an existing ranking is never overwritten
+- Custom lists: copied with the same IDs, so running the merge twice can't create duplicates
+  - This matters because React runs effects twice in development (Strict Mode) to catch bugs. Every step of the merge is designed so doing it twice gives the same result, which is called being *idempotent*
+- Afterward, the browser copy is cleared, and a green banner confirms the move
 
 ---
 
@@ -514,10 +585,16 @@ next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotif
 - **Tier list (songs heard live)**
   - Put songs into tiers with the S/A/B/C/D buttons, then drag some between tiers and within a tier
   - Drag a song into an empty tier
-  - Try "Sort this tier" on a tier with 4+ songs, including "Too close to call" and Cancel
   - Press Escape mid-drag: the song should go back where it was
   - Remove a concert and check that its songs disappear from the tiers
   - Try it on your phone (press and hold to drag)
+- **Accounts**
+  - As a guest, add a couple of concerts and rank a few songs, then sign up: the green banner should appear, and your data should still be there
+  - Refresh: still logged in, with the same data
+  - Log out: you're back to an empty guest session (the guest data moved into the account)
+  - Open the site in a different browser (or a private window), log in, and check your data is there
+  - Rank a song and log out within a second: after logging back in, the change should be saved
+  - In Supabase's Table Editor, look at your rows in `concerts`, `live_tiers`, and `custom_lists`
 - **Custom lists**
   - Connect Spotify, create a list, and add a full discography of an artist you know well
     - Look for duplicates that got through (like a song appearing twice with different titles), and songs that shouldn't have merged
@@ -528,7 +605,10 @@ next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotif
 
 ## Known limitations (on purpose, for now)
 
-- Data lives in one browser only (and one address: `localhost` and `127.0.0.1` count as different sites). Phase 2 fixes this with accounts
+- Guest data lives in one browser only (and one address: `localhost` and `127.0.0.1` count as different sites). Accounts fix this
+- Email confirmation is off for development. Turn it on in Supabase before launching
+- No "forgot password" flow yet
+- If the same account is open in two tabs, the last save wins (changes in one tab don't appear in the other until refresh)
 - Search needs an artist name. You can't search by venue or date alone
 - "Make a playlist" is still a placeholder, but the Spotify login it needs is now done
 - Search results are 20 per page, newest first, so older shows may need "Load more" or filters
@@ -542,8 +622,7 @@ next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotif
 
 ## What comes next
 
-- **Phase 2: Supabase accounts**
-  - Sign up and log in, save concerts and rankings to a Postgres database, and copy guest data into a new account
+- **Phase 2: Supabase accounts** (done)
 - **Phase 3: Spotify playlists**
   - Spotify login is already done. What's left: matching songs heard live to Spotify tracks (handling covers, missing songs, and versions), creating playlists, and a shared table of confirmed matches
   - Remember Spotify's current limits: the app owner needs Premium, and dev mode allows 5 users
@@ -557,9 +636,12 @@ next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotif
 
 - **The client/server split**: why the setlist.fm key lives only in an API route
 - **Deriving vs. storing data**: song counts are calculated from concerts rather than saved, so they can never go out of sync
-- **Choosing tiers over pairwise ranking, using math**: any pairwise method needs at least log₂(n!) comparisons (about 525 for 100 songs), while tiers need n decisions, with binary insertion kept as an optional refinement
+- **Choosing tiers over pairwise ranking, using math**: any pairwise method needs at least log₂(n!) comparisons (about 525 for 100 songs), while tiers need n decisions
 - **Drag and drop across multiple lists**: a temporary drag state that's only saved on drop, plus accessibility through keyboard sensors
 - **OAuth done securely**: the authorization code flow, CSRF protection with `state`, httpOnly cookies, and automatic token refresh
+- **Database security with Row Level Security**: why a public key is safe when Postgres enforces per-user access rules
+- **Designing an idempotent data migration**: merging guest data safely even when it runs twice
+- **Optimistic updates with debounced saves**, plus flushing pending saves before logout
 - **Debugging a drag-and-drop feedback loop**: layout shifts re-triggering moves, fixed by freezing the drop target for one animation frame
 - **Deduplicating messy music catalog data**: filtering release types, cleaning version labels with regular expressions, and letting the original release win
 - **Working within API limits**: 1,440 requests/day shaped the decision to store setlist snapshots

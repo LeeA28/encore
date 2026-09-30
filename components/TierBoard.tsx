@@ -39,13 +39,8 @@ import {
   buildBoard,
   boardToTiers,
   moveToTier,
-  startSort,
-  opponentOf,
-  answerSort,
   type Board,
   type ContainerId,
-  type SortSession,
-  type SortChoice,
   type TierName,
   type Tiers,
 } from "@/lib/tiers";
@@ -67,7 +62,6 @@ export default function TierBoard({ items, tiers, onChange, onRemoveItem }: Prop
   // It's only saved when the drag ends, so a cancelled drag changes nothing.
   const [dragBoard, setDragBoard] = useState<Board | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [session, setSession] = useState<SortSession | null>(null);
 
   const board = dragBoard ?? savedBoard;
   const itemsByKey = useMemo(() => new Map(items.map((i) => [i.key, i])), [items]);
@@ -167,27 +161,6 @@ export default function TierBoard({ items, tiers, onChange, onRemoveItem }: Prop
     setActiveKey(null);
   }
 
-  // ---- "Sort this tier" ----
-  function beginSort(tier: TierName) {
-    setSession(startSort(tier, board[tier]));
-  }
-
-  function answer(choice: SortChoice) {
-    if (!session) return;
-    const result = answerSort(session, choice);
-    if (Array.isArray(result)) {
-      onChange({ ...boardToTiers(board), [session.tier]: result }); // finished: save the new order
-      setSession(null);
-    } else {
-      setSession(result);
-    }
-  }
-
-  const describe = (key: string) => {
-    const item = itemsByKey.get(key);
-    return item ? { name: item.name, artist: item.artist } : { name: key, artist: "" };
-  };
-
   const rankedCount = items.length - board.unranked.length;
 
   return (
@@ -198,38 +171,6 @@ export default function TierBoard({ items, tiers, onChange, onRemoveItem }: Prop
         </span>
         <span className="pill">Drag songs, or tap a letter</span>
       </div>
-
-      {session && (
-        <div className="sort-panel">
-          <div className="muted" style={{ fontSize: 14 }}>
-            Sorting tier {session.tier} · {session.sorted.length} of{" "}
-            {session.sorted.length + session.pending.length + 1} placed
-          </div>
-          <div style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>Which do you like more?</div>
-          <div className="sort-choices">
-            {[
-              { key: session.current, choice: "current" as const },
-              { key: opponentOf(session), choice: "opponent" as const },
-            ].map(({ key, choice }) => (
-              <button key={choice} className="btn btn-light" onClick={() => answer(choice)}>
-                <span>
-                  <strong>{describe(key).name}</strong>
-                  <br />
-                  <small style={{ color: "#555" }}>{describe(key).artist}</small>
-                </span>
-              </button>
-            ))}
-          </div>
-          <div className="form-row">
-            <button className="btn btn-ghost btn-small" onClick={() => answer("tie")}>
-              Too close to call
-            </button>
-            <button className="btn btn-ghost btn-small" onClick={() => setSession(null)}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       <DndContext
         sensors={sensors}
@@ -247,17 +188,12 @@ export default function TierBoard({ items, tiers, onChange, onRemoveItem }: Prop
               key={container}
               id={container}
               keys={board[container]}
-              disabled={session !== null}
-              onSort={
-                container !== "unranked" && board[container].length >= 2 ? () => beginSort(container) : undefined
-              }
             >
               {board[container].map((key) => (
                 <SongCard
                   key={key}
                   id={key}
                   item={itemsByKey.get(key)}
-                  disabled={session !== null}
                   onQuickTier={
                     container === "unranked"
                       ? (tier) => onChange(moveToTier(boardToTiers(board), key, tier))
@@ -280,14 +216,8 @@ export default function TierBoard({ items, tiers, onChange, onRemoveItem }: Prop
 }
 
 // One tier (or the unranked area). The whole row is a drop target, so there's a big area to aim for.
-function TierRow(props: {
-  id: ContainerId;
-  keys: string[];
-  disabled: boolean;
-  onSort?: () => void;
-  children: React.ReactNode;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id: props.id, disabled: props.disabled });
+function TierRow(props: { id: ContainerId; keys: string[]; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: props.id });
   const isTier = props.id !== "unranked";
 
   return (
@@ -300,11 +230,6 @@ function TierRow(props: {
           {isTier ? props.id : "new"}
         </div>
         <span className="tier-count">{props.keys.length}</span>
-        {props.onSort && !props.disabled && (
-          <button className="btn btn-ghost btn-small" style={{ padding: "3px 8px", fontSize: 12 }} onClick={props.onSort}>
-            sort
-          </button>
-        )}
       </div>
       <SortableContext id={props.id} items={props.keys} strategy={rectSortingStrategy}>
         <div className="tier-drop">
@@ -331,14 +256,10 @@ const noDrag = {
 function SongCard(props: {
   id: string;
   item?: RankItem;
-  disabled: boolean;
   onQuickTier?: (tier: TierName) => void;
   onRemove?: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: props.id,
-    disabled: props.disabled,
-  });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.id });
 
   const hasActions = props.onQuickTier || props.onRemove;
 
@@ -350,7 +271,7 @@ function SongCard(props: {
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.35 : 1, // the original card fades while its floating copy is dragged
-        cursor: props.disabled ? "default" : "grab",
+        cursor: "grab",
         touchAction: "manipulation",
       }}
       {...attributes}
@@ -365,14 +286,13 @@ function SongCard(props: {
                 className="tier-btn"
                 style={{ background: TIER_COLORS[tier] }}
                 onClick={() => props.onQuickTier!(tier)}
-                disabled={props.disabled}
                 {...noDrag}
               >
                 {tier}
               </button>
             ))}
           {props.onRemove && (
-            <button className="remove-btn" onClick={props.onRemove} disabled={props.disabled} title="Remove from this list" {...noDrag}>
+            <button className="remove-btn" onClick={props.onRemove} title="Remove from this list" {...noDrag}>
               ×
             </button>
           )}

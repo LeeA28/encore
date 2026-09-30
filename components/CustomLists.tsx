@@ -2,58 +2,42 @@
 
 // Custom ranking lists: make a named list, fill it with songs from Spotify, rank it in tiers.
 
-import { useEffect, useState } from "react";
-import type { CustomList, RankItem } from "@/lib/types";
-import { emptyTiers, removeFromTiers, type Tiers } from "@/lib/tiers";
-import { useLocalStorage } from "@/lib/useLocalStorage";
+import { useState } from "react";
+import type { RankItem } from "@/lib/types";
+import { removeFromTiers, type Tiers } from "@/lib/tiers";
+import type { EncoreDataApi } from "@/lib/useEncoreData";
 import TierBoard from "./TierBoard";
 import SpotifyAdder from "./SpotifyAdder";
 
-export default function CustomLists() {
-  const [lists, setLists] = useLocalStorage<CustomList[]>("encore:customLists", []);
+type Props = {
+  data: EncoreDataApi; // the lists and the functions to change them (saved to the browser or the account)
+  spotifyConnected: boolean | null;
+};
+
+export default function CustomLists({ data, spotifyConnected }: Props) {
+  const lists = data.customLists;
   const [selectedId, setSelectedId] = useState<string>(lists[0]?.id ?? "");
   const [newName, setNewName] = useState("");
-  const [connected, setConnected] = useState<boolean | null>(null); // null = still checking
-
-  // If Spotify sent back an error after login, it arrives in the URL (?spotifyError=...)
-  const [spotifyError] = useState(() => new URLSearchParams(window.location.search).get("spotifyError") ?? "");
-
-  // Ask the server whether this browser is connected to Spotify (the token is in an httpOnly cookie,
-  // which browser code can't read directly, so we have to ask)
-  useEffect(() => {
-    fetch("/api/spotify/status")
-      .then((res) => res.json())
-      .then((data) => setConnected(data.connected))
-      .catch(() => setConnected(false));
-  }, []);
-
-  const selected = lists.find((l) => l.id === selectedId);
-
-  // Replace one list with an updated copy (never mutate the old one)
-  function updateList(id: string, change: (list: CustomList) => CustomList) {
-    setLists(lists.map((l) => (l.id === id ? change(l) : l)));
-  }
+  // If the selected list was deleted (or none is picked yet), fall back to the first list
+  const selected = lists.find((l) => l.id === selectedId) ?? lists[0];
 
   function createList(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const name = newName.trim();
     if (!name) return;
-    const list: CustomList = { id: crypto.randomUUID(), name, items: [], tiers: emptyTiers() };
-    setLists([...lists, list]);
-    setSelectedId(list.id);
+    setSelectedId(data.createList(name));
     setNewName("");
   }
 
   function deleteList(id: string) {
     if (!confirm("Delete this list and its rankings?")) return;
-    const remaining = lists.filter((l) => l.id !== id);
-    setLists(remaining);
-    setSelectedId(remaining[0]?.id ?? "");
+    data.deleteList(id);
+    setSelectedId(lists.find((l) => l.id !== id)?.id ?? "");
   }
 
   function addItems(items: RankItem[]) {
     if (!selected) return;
-    updateList(selected.id, (list) => {
+    data.updateList(selected.id, (list) => {
       const existing = new Set(list.items.map((i) => i.key));
       const fresh = items.filter((i) => !existing.has(i.key)); // skip songs already in the list
       return { ...list, items: [...list.items, ...fresh] };
@@ -62,25 +46,18 @@ export default function CustomLists() {
 
   function removeItem(key: string) {
     if (!selected) return;
-    updateList(selected.id, (list) => ({
+    data.updateList(selected.id, (list) => ({
       ...list,
       items: list.items.filter((i) => i.key !== key),
       tiers: removeFromTiers(list.tiers, key),
     }));
   }
 
-  async function disconnect() {
-    await fetch("/api/spotify/logout", { method: "POST" });
-    setConnected(false);
-  }
-
   return (
     <div>
-      {spotifyError && <p className="error">{spotifyError}</p>}
-
       <div className="form-row">
         {lists.length > 0 && (
-          <select className="select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+          <select className="select" value={selected?.id ?? ""} onChange={(e) => setSelectedId(e.target.value)}>
             {lists.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.name} ({l.items.length} songs)
@@ -110,28 +87,19 @@ export default function CustomLists() {
             </button>
           </div>
 
-          {connected === null && <p className="notice">Checking Spotify connection...</p>}
-          {connected === false && (
-            <div className="panel">
-              <p style={{ marginBottom: 12 }}>Connect Spotify to add songs from any artist or album.</p>
-              <a className="btn btn-light" href="/api/spotify/login">
-                Connect Spotify
-              </a>
-            </div>
+          {spotifyConnected === null && <p className="notice">Checking Spotify connection...</p>}
+          {spotifyConnected === false && (
+            <p className="notice">Connect Spotify (top right) to add songs from any artist or album.</p>
           )}
-          {connected && (
-            <SpotifyAdder
-              onAdd={addItems}
-              existingKeys={new Set(selected.items.map((i) => i.key))}
-              onDisconnect={disconnect}
-            />
+          {spotifyConnected && (
+            <SpotifyAdder onAdd={addItems} existingKeys={new Set(selected.items.map((i) => i.key))} />
           )}
 
           {selected.items.length > 0 ? (
             <TierBoard
               items={selected.items}
               tiers={selected.tiers}
-              onChange={(tiers: Tiers) => updateList(selected.id, (list) => ({ ...list, tiers }))}
+              onChange={(tiers: Tiers) => data.updateList(selected.id, (list) => ({ ...list, tiers }))}
               onRemoveItem={removeItem}
             />
           ) : (

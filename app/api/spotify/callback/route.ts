@@ -10,12 +10,14 @@ export async function GET(request: NextRequest) {
   const state = params.get("state");
   const store = await cookies();
   const savedState = store.get(COOKIE.state)?.value;
+  const tab = store.get(COOKIE.returnTab)?.value ?? "concerts";
   store.delete(COOKIE.state);
+  store.delete(COOKIE.returnTab);
 
-  // Back to the Rank tab either way, with an error message if something went wrong
+  // Back to the tab the user started from, with an error message if something went wrong
   const back = (error?: string) =>
     NextResponse.redirect(
-      new URL(`/?tab=rank${error ? `&spotifyError=${encodeURIComponent(error)}` : ""}`, request.url)
+      new URL(`/?tab=${tab}${error ? `&spotifyError=${encodeURIComponent(error)}` : ""}`, request.url)
     );
 
   if (params.get("error")) return back("Spotify login was cancelled.");
