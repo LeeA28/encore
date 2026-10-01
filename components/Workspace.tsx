@@ -59,7 +59,16 @@ export default function Workspace({ user, tab, spotifyConnected, flushRef }: Pro
       {tab === "concerts" && (
         <ConcertSearch myConcerts={data.concerts} onAdd={data.addConcert} onRemove={data.removeConcert} />
       )}
-      {tab === "songs" && <SongList songs={songs} concertCount={data.concerts.length} />}
+      {tab === "songs" && (
+        <SongList
+          songs={songs}
+          concertCount={data.concerts.length}
+          playlists={data.playlists}
+          onPlaylistCreated={data.addPlaylist}
+          onPlaylistRemoved={data.removePlaylist}
+          spotifyConnected={spotifyConnected}
+        />
+      )}
       {tab === "rank" && <RankTab songs={songs} data={data} spotifyConnected={spotifyConnected} />}
     </main>
   );

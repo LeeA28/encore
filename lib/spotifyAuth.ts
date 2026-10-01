@@ -18,7 +18,17 @@ export const COOKIE = {
 };
 
 // What Encore asks permission for. Browsing albums needs no special scope; these are for making playlists later.
-export const SCOPES = ["playlist-modify-private", "playlist-modify-public"];
+// - playlist-modify-*: create playlists and add songs
+// - playlist-read-private, user-library-read: check whether Encore's playlists are still in your library
+// - user-library-modify: restore a playlist you deleted (add it back to your library)
+// Changing this list means existing connections don't have the new permissions until you reconnect.
+export const SCOPES = [
+  "playlist-modify-private",
+  "playlist-modify-public",
+  "playlist-read-private",
+  "user-library-read",
+  "user-library-modify",
+];
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 

@@ -1,18 +1,20 @@
 // Guest mode: when nobody is logged in, everything is saved in this browser's localStorage.
 
-import type { Concert, CustomList } from "./types";
+import type { Concert, CustomList, SavedPlaylist } from "./types";
 import { emptyTiers, TIER_NAMES, type Tiers } from "./tiers";
 
 export const GUEST_KEYS = {
   concerts: "encore:concerts",
   liveTiers: "encore:liveTiers",
   customLists: "encore:customLists",
+  playlists: "encore:playlists",
 };
 
 export type EncoreData = {
   concerts: Concert[];
   liveTiers: Tiers;
   customLists: CustomList[];
+  playlists: SavedPlaylist[];
 };
 
 export function readLocal<T>(key: string, fallback: T): T {
@@ -37,6 +39,7 @@ export function readGuestData(): EncoreData {
     concerts: readLocal<Concert[]>(GUEST_KEYS.concerts, []),
     liveTiers: readLocal<Tiers>(GUEST_KEYS.liveTiers, emptyTiers()),
     customLists: readLocal<CustomList[]>(GUEST_KEYS.customLists, []),
+    playlists: readLocal<SavedPlaylist[]>(GUEST_KEYS.playlists, []),
   };
 }
 
@@ -49,5 +52,10 @@ export function tiersAreEmpty(tiers: Tiers): boolean {
 }
 
 export function hasGuestData(data: EncoreData): boolean {
-  return data.concerts.length > 0 || data.customLists.length > 0 || !tiersAreEmpty(data.liveTiers);
+  return (
+    data.concerts.length > 0 ||
+    data.customLists.length > 0 ||
+    data.playlists.length > 0 ||
+    !tiersAreEmpty(data.liveTiers)
+  );
 }

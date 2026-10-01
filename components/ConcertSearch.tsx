@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Concert } from "@/lib/types";
-import { formatDate, formatPlace } from "@/lib/concerts";
+import { formatCity, formatDate } from "@/lib/concerts";
 import { getCountries } from "@/lib/countries";
 import { TicketIcon } from "./Icons";
 
@@ -30,33 +30,55 @@ export default function ConcertSearch({ myConcerts, onAdd, onRemove }: Props) {
   const [searched, setSearched] = useState(false);
 
   // page 1 = a new search (replace results). page 2+ = "Load more" (add to the end).
-  async function search(pageToLoad: number) {
-    if (!artist.trim()) {
-      setError("Enter an artist name.");
-      return;
-    }
+  // signal: lets a newer search cancel this one if the user keeps typing
+  async function search(pageToLoad: number, signal?: AbortSignal) {
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams({ artist, year, city, country, page: String(pageToLoad) });
-      const res = await fetch(`/api/search?${params}`);
+      const params = new URLSearchParams({ artist: artist.trim(), year, city, country, page: String(pageToLoad) });
+      const res = await fetch(`/api/search?${params}`, { signal });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      setResults(pageToLoad === 1 ? data.concerts : [...results, ...data.concerts]);
+      setResults((prev) => (pageToLoad === 1 ? data.concerts : [...prev, ...data.concerts]));
       setPage(pageToLoad);
       setHasMore(data.hasMore);
+      setSearched(true);
     } catch (err) {
+      if (signal?.aborted) return; // cancelled because the user typed more: not a real error
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
-      setLoading(false);
-      setSearched(true);
+      if (!signal?.aborted) setLoading(false);
     }
   }
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    search(1);
+  // ---- Search as you type ----
+  // Whenever the artist or a filter changes, wait until typing pauses for 600ms, then search.
+  // Waiting matters: setlist.fm allows 2 requests per second and 1,440 per day, so searching
+  // on every single keystroke would use those up fast.
+  const readyToSearch = artist.trim().length >= 2 && (year === "" || /^\d{4}$/.test(year)); // skip partial years like "20"
+
+  useEffect(() => {
+    if (!readyToSearch) return;
+    const controller = new AbortController(); // lets us cancel this search if the user keeps typing
+    const timer = setTimeout(() => search(1, controller.signal), 600);
+    // Cleanup runs before the next change: cancel the wait, and cancel the request if it already started
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- search only needs to re-run when these inputs change
+  }, [artist, year, city, country, readyToSearch]);
+
+  // Clearing the artist box clears the results right away
+  function handleArtistChange(value: string) {
+    setArtist(value);
+    if (value.trim().length < 2) {
+      setResults([]);
+      setHasMore(false);
+      setSearched(false);
+      setError("");
+    }
   }
 
   const myIds = new Set(myConcerts.map((c) => c.id));
@@ -71,11 +93,24 @@ export default function ConcertSearch({ myConcerts, onAdd, onRemove }: Props) {
           </div>
           <h1 className="card-title">concerts</h1>
         </div>
-        <p className="card-desc">Search for the shows you&apos;ve been to and add them to your history.</p>
+        <p className="card-desc">Type an artist to find the shows you&apos;ve been to, then add them to your history.</p>
 
-        <form className="form-row" onSubmit={handleSubmit}>
-          <input className="input grow" value={artist} onChange={(e) => setArtist(e.target.value)} placeholder="Artist" />
-          <input className="input" style={{ width: 150 }} value={year} onChange={(e) => setYear(e.target.value)} placeholder="Year" />
+        <div className="form-row">
+          <input
+            className="input grow"
+            value={artist}
+            onChange={(e) => handleArtistChange(e.target.value)}
+            placeholder="Start typing an artist"
+          />
+          <input
+            className="input"
+            style={{ width: 120 }}
+            inputMode="numeric"
+            maxLength={4}
+            value={year}
+            onChange={(e) => setYear(e.target.value.replace(/\D/g, ""))} // digits only
+            placeholder="Year"
+          />
           <input className="input" style={{ width: 170 }} value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
           {/* Shows country names, but sends the 2-letter code that setlist.fm needs */}
           <select className="select" value={country} onChange={(e) => setCountry(e.target.value)}>
@@ -86,13 +121,11 @@ export default function ConcertSearch({ myConcerts, onAdd, onRemove }: Props) {
               </option>
             ))}
           </select>
-          <button className="btn btn-light" type="submit" disabled={loading}>
-            {loading ? "Searching..." : "Search"}
-          </button>
-        </form>
+        </div>
+        {loading && <p className="notice">Searching...</p>}
 
         {error && <p className="error">{error}</p>}
-        {searched && !error && results.length === 0 && (
+        {searched && !loading && !error && results.length === 0 && (
           <p className="notice">No concerts found. Try removing the year, city, or country, or check the spelling.</p>
         )}
 
@@ -138,16 +171,20 @@ export default function ConcertSearch({ myConcerts, onAdd, onRemove }: Props) {
 }
 
 // One concert as a small card. "selected" = it's in your concerts.
+// Date, city, and tour stand out most; the artist is quieter, since you just searched for them.
 function ConcertCard({ concert: c, selected, onToggle }: { concert: Concert; selected: boolean; onToggle: () => void }) {
   return (
     <div className={`concert-card ${selected ? "selected" : ""}`}>
       <div className="concert-date">{formatDate(c.date)}</div>
-      <div className="concert-artist">{c.artist}</div>
-      <div className="concert-place">{formatPlace(c)}</div>
+      <div className="concert-city">{formatCity(c) || "Unknown city"}</div>
+      {c.tour && <div className="concert-tour">{c.tour}</div>}
+      <div className="concert-meta">
+        {c.artist} · {c.venue}
+      </div>
 
       {c.songs.length > 0 ? (
         <details>
-          <summary>{c.songs.length} songs</summary>
+          <summary>Setlist</summary>
           <ol>
             {c.songs.map((song, i) => (
               <li key={i}>
@@ -158,9 +195,7 @@ function ConcertCard({ concert: c, selected, onToggle }: { concert: Concert; sel
           </ol>
         </details>
       ) : (
-        <span className="muted" style={{ fontSize: 14 }}>
-          No setlist yet
-        </span>
+        <span className="concert-meta">No setlist yet</span>
       )}
 
       <div className="concert-actions">

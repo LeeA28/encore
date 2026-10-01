@@ -17,6 +17,7 @@ export type SetlistFmSetlist = {
   eventDate: string; // format "dd-MM-yyyy", e.g. "14-03-2025"
   url: string; // link to this setlist on setlist.fm
   artist: { name: string };
+  tour?: { name: string };
   venue: {
     name: string;
     city?: { name: string; country?: { code: string; name: string } };

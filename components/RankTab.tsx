@@ -7,6 +7,7 @@ import type { RankItem, SongCount } from "@/lib/types";
 import type { EncoreDataApi } from "@/lib/useEncoreData";
 import TierBoard from "./TierBoard";
 import CustomLists from "./CustomLists";
+import TierPlaylistButton from "./TierPlaylistButton";
 import { StackIcon } from "./Icons";
 
 type Props = {
@@ -20,7 +21,14 @@ export default function RankTab({ songs, data, spotifyConnected }: Props) {
 
   // Turn the song counts into tier-list items
   const liveItems: RankItem[] = useMemo(
-    () => songs.map((s) => ({ key: s.key, name: s.name, artist: s.artist, detail: `heard ${s.timesHeard}×` })),
+    () =>
+      songs.map((s) => ({
+        key: s.key,
+        name: s.name,
+        artist: s.artist,
+        coverOf: s.coverOf, // needed to find covers on Spotify
+        detail: `heard ${s.timesHeard}×`,
+      })),
     [songs]
   );
 
@@ -45,7 +53,18 @@ export default function RankTab({ songs, data, spotifyConnected }: Props) {
 
       {mode === "live" &&
         (liveItems.length > 0 ? (
-          <TierBoard items={liveItems} tiers={data.liveTiers} onChange={data.setLiveTiers} />
+          <>
+            <div style={{ marginBottom: 12 }}>
+              <TierPlaylistButton
+                items={liveItems}
+                tiers={data.liveTiers}
+                listName="Songs heard live"
+                spotifyConnected={spotifyConnected}
+                onCreated={data.addPlaylist}
+              />
+            </div>
+            <TierBoard items={liveItems} tiers={data.liveTiers} onChange={data.setLiveTiers} />
+          </>
         ) : (
           <p className="notice">Add some concerts in the concerts tab first.</p>
         ))}

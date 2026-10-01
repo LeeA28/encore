@@ -8,6 +8,8 @@ import { removeFromTiers, type Tiers } from "@/lib/tiers";
 import type { EncoreDataApi } from "@/lib/useEncoreData";
 import TierBoard from "./TierBoard";
 import SpotifyAdder from "./SpotifyAdder";
+import TierPlaylistButton from "./TierPlaylistButton";
+import { useConfirm } from "./ConfirmDialog";
 
 type Props = {
   data: EncoreDataApi; // the lists and the functions to change them (saved to the browser or the account)
@@ -18,6 +20,7 @@ export default function CustomLists({ data, spotifyConnected }: Props) {
   const lists = data.customLists;
   const [selectedId, setSelectedId] = useState<string>(lists[0]?.id ?? "");
   const [newName, setNewName] = useState("");
+  const confirm = useConfirm();
   // If the selected list was deleted (or none is picked yet), fall back to the first list
   const selected = lists.find((l) => l.id === selectedId) ?? lists[0];
 
@@ -29,8 +32,15 @@ export default function CustomLists({ data, spotifyConnected }: Props) {
     setNewName("");
   }
 
-  function deleteList(id: string) {
-    if (!confirm("Delete this list and its rankings?")) return;
+  async function deleteList(id: string) {
+    const list = lists.find((l) => l.id === id);
+    const ok = await confirm({
+      title: `Delete "${list?.name ?? "this list"}"?`,
+      message: "Its songs and tier rankings will be deleted. This can't be undone.",
+      confirmLabel: "Delete list",
+      danger: true,
+    });
+    if (!ok) return;
     data.deleteList(id);
     setSelectedId(lists.find((l) => l.id !== id)?.id ?? "");
   }
@@ -93,6 +103,18 @@ export default function CustomLists({ data, spotifyConnected }: Props) {
           )}
           {spotifyConnected && (
             <SpotifyAdder onAdd={addItems} existingKeys={new Set(selected.items.map((i) => i.key))} />
+          )}
+
+          {selected.items.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <TierPlaylistButton
+                items={selected.items}
+                tiers={selected.tiers}
+                listName={selected.name}
+                spotifyConnected={spotifyConnected}
+                onCreated={data.addPlaylist}
+              />
+            </div>
           )}
 
           {selected.items.length > 0 ? (

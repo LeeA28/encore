@@ -1,14 +1,31 @@
 "use client";
 
-import type { SongCount } from "@/lib/types";
+import { useState } from "react";
+import type { SavedPlaylist, SongCount } from "@/lib/types";
+import { groupByArtist } from "@/lib/songs";
+import PlaylistBuilder from "./PlaylistBuilder";
+import PlaylistList from "./PlaylistList";
 import { NoteIcon } from "./Icons";
 
 type Props = {
   songs: SongCount[];
   concertCount: number;
+  playlists: SavedPlaylist[];
+  onPlaylistCreated: (playlist: SavedPlaylist) => void;
+  onPlaylistRemoved: (spotifyId: string) => void;
+  spotifyConnected: boolean | null;
 };
 
-export default function SongList({ songs, concertCount }: Props) {
+export default function SongList({
+  songs,
+  concertCount,
+  playlists,
+  onPlaylistCreated,
+  onPlaylistRemoved,
+  spotifyConnected,
+}: Props) {
+  const [building, setBuilding] = useState(false);
+
   // Total performances heard = the sum of every song's count
   const totalHeard = songs.reduce((sum, s) => sum + s.timesHeard, 0);
 
@@ -31,12 +48,21 @@ export default function SongList({ songs, concertCount }: Props) {
             <span className="pill">{totalHeard} songs heard</span>
             <span className="pill">{songs.length} different songs</span>
           </div>
-          {/* Placeholder until playlists are built */}
-          <button className="btn btn-light" onClick={() => alert("Spotify playlists are coming soon.")}>
+          <button className="btn btn-spotify" onClick={() => setBuilding(true)}>
             Make a playlist
           </button>
+          {spotifyConnected === false && (
+            <span className="muted" style={{ marginLeft: 12, fontSize: 14 }}>
+              Connect Spotify (top right) first
+            </span>
+          )}
 
-          <ol className="song-rows" style={{ marginTop: 20 }}>
+          {playlists.length > 0 && (
+            <PlaylistList playlists={playlists} spotifyConnected={spotifyConnected} onRemove={onPlaylistRemoved} />
+          )}
+
+          <h2 className="card-subtitle">all songs</h2>
+          <ol className="song-rows">
             {songs.map((s, i) => (
               <li key={s.key} className="song-row">
                 <span className="song-rank">{i + 1}</span>
@@ -52,6 +78,19 @@ export default function SongList({ songs, concertCount }: Props) {
             ))}
           </ol>
         </>
+      )}
+
+      {building && (
+        <PlaylistBuilder
+          // Grouped by artist (artists ordered by their most-heard song), each artist's songs most heard first
+          songs={groupByArtist(songs).map((s) => ({ key: s.key, name: s.name, artist: s.artist, coverOf: s.coverOf }))}
+          defaultName="Encore: every song I've heard live"
+          source="Songs heard live"
+          spotifyConnected={spotifyConnected}
+          returnTab="songs"
+          onCreated={onPlaylistCreated}
+          onClose={() => setBuilding(false)}
+        />
       )}
     </section>
   );

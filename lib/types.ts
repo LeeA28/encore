@@ -13,6 +13,7 @@ export type Concert = {
   venue: string;
   city: string;
   country?: string; // optional: concerts saved before countries were added won't have one
+  tour?: string; // the tour name, if setlist.fm has one
   url: string; // this concert's page on setlist.fm
   songs: Song[]; // only songs performed live, in setlist order
 };
@@ -33,7 +34,26 @@ export type RankItem = {
   name: string;
   artist: string;
   detail?: string; // extra info to show, like "heard 3x" or the album name
-  spotifyId?: string; // Spotify track id, for making playlists later
+  spotifyId?: string; // Spotify track id (songs added from Spotify already have one)
+  coverOf?: string; // for songs heard live: the original artist, if it was a cover
+};
+
+// A Spotify track that a song was matched to
+export type TrackMatch = {
+  id: string; // Spotify track id
+  name: string;
+  artist: string;
+  album?: string;
+};
+
+// A playlist Encore created in someone's Spotify account
+export type SavedPlaylist = {
+  spotifyId: string;
+  name: string;
+  url: string; // opens the playlist in Spotify
+  trackCount: number;
+  source: string; // what it was made from, e.g. "Songs heard live" or "S + A tiers: Radiohead discography"
+  createdAt: string;
 };
 
 // A user-made list of songs to rank (a discography, some albums, handpicked songs...)

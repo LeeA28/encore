@@ -17,6 +17,18 @@ export function songKey(artist: string, song: string): string {
   return `${normalize(artist)}|${normalize(song)}`;
 }
 
+// Medleys: setlist.fm lists songs played back-to-back as one entry, separated by " / ", like
+// "It Will Rain / Talking to the Moon / When I Was Your Man". Spotify has each song, but not the
+// combination, so medleys are split into separate songs before counting.
+// Only " / " with spaces around it counts, so titles like "Face/Off" stay whole.
+export function splitMedley(name: string): string[] {
+  const parts = name
+    .split(" / ")
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
+  return parts.length > 0 ? parts : [name];
+}
+
 // Goes through every song at every concert and counts how many concerts each one was played at.
 // Returns the list sorted from most heard to least heard.
 export function countSongs(concerts: Concert[]): SongCount[] {
@@ -24,7 +36,9 @@ export function countSongs(concerts: Concert[]): SongCount[] {
   const counts = new Map<string, SongCount>();
 
   for (const concert of concerts) {
-    for (const song of concert.songs) {
+    // Split medleys here (not when saving concerts), so concerts saved earlier benefit too
+    const songs = concert.songs.flatMap((song) => splitMedley(song.name).map((name) => ({ ...song, name })));
+    for (const song of songs) {
       const key = songKey(concert.artist, song.name);
 
       // Get the existing entry, or start a new one at zero ("??" = "if missing, use this instead")
@@ -50,4 +64,29 @@ export function countSongs(concerts: Concert[]): SongCount[] {
   return [...counts.values()].sort(
     (a, b) => b.timesHeard - a.timesHeard || a.name.localeCompare(b.name)
   );
+}
+
+// Playlist order for songs heard live: grouped by artist, each artist's songs from most to least heard.
+// Artists are ordered by their most-heard song (ties: more total plays first, then alphabetical).
+//
+// Example:  A by X ×6, E by Y ×5, F by Y ×4, B by X ×3, C by X ×2, D by X ×1
+// becomes:  A, B, C, D (artist X, whose top song has 6), then E, F (artist Y, whose top song has 5)
+export function groupByArtist(songs: SongCount[]): SongCount[] {
+  const groups = new Map<string, SongCount[]>();
+  for (const song of songs) {
+    const artist = normalize(song.artist);
+    groups.set(artist, [...(groups.get(artist) ?? []), song]);
+  }
+
+  const sortedGroups = [...groups.values()].map((group) =>
+    [...group].sort((a, b) => b.timesHeard - a.timesHeard || a.name.localeCompare(b.name))
+  );
+
+  const top = (group: SongCount[]) => group[0].timesHeard; // the group is sorted, so its first song is the most heard
+  const total = (group: SongCount[]) => group.reduce((sum, s) => sum + s.timesHeard, 0);
+
+  sortedGroups.sort(
+    (a, b) => top(b) - top(a) || total(b) - total(a) || a[0].artist.localeCompare(b[0].artist)
+  );
+  return sortedGroups.flat(); // join the groups back into one list
 }

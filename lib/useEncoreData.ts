@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import type { Concert, CustomList } from "./types";
+import type { Concert, CustomList, SavedPlaylist } from "./types";
 import { emptyTiers, type Tiers } from "./tiers";
 import { createClient } from "./supabase/client";
 import {
@@ -29,6 +29,8 @@ import {
   saveConcerts,
   saveCustomList,
   saveLiveTiers,
+  savePlaylists,
+  deletePlaylist,
 } from "./accountData";
 
 export type DataStatus = "loading" | "ready" | "error";
@@ -45,6 +47,7 @@ export function useEncoreData(user: User | null) {
   const [customLists, setCustomLists] = useState<CustomList[]>(() =>
     isGuest ? readLocal(GUEST_KEYS.customLists, []) : []
   );
+  const [playlists, setPlaylists] = useState<SavedPlaylist[]>(() => (isGuest ? readLocal(GUEST_KEYS.playlists, []) : []));
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(""); // e.g. "Moved your guest data into your account"
 
@@ -58,6 +61,9 @@ export function useEncoreData(user: User | null) {
   useEffect(() => {
     if (isGuest) writeLocal(GUEST_KEYS.customLists, customLists);
   }, [isGuest, customLists]);
+  useEffect(() => {
+    if (isGuest) writeLocal(GUEST_KEYS.playlists, playlists);
+  }, [isGuest, playlists]);
 
   // ---- Logged in: move any guest data into the account, then load everything ----
   useEffect(() => {
@@ -81,6 +87,7 @@ export function useEncoreData(user: User | null) {
         setConcerts(account.concerts);
         setLiveTiersState(account.liveTiers);
         setCustomLists(account.customLists);
+        setPlaylists(account.playlists);
         setStatus("ready");
       } catch (err) {
         if (cancelled) return;
@@ -166,6 +173,17 @@ export function useEncoreData(user: User | null) {
     if (user) saveSoon(`list:${id}`, () => saveCustomList(createClient(), user.id, updated));
   }
 
+  function addPlaylist(playlist: SavedPlaylist) {
+    setPlaylists((prev) => [playlist, ...prev]); // newest first
+    if (user) save(() => savePlaylists(createClient(), user.id, [playlist]));
+  }
+
+  // Takes a playlist off Encore's list (it stays in Spotify, if it's there)
+  function removePlaylist(spotifyId: string) {
+    setPlaylists((prev) => prev.filter((p) => p.spotifyId !== spotifyId));
+    if (user) save(() => deletePlaylist(createClient(), user.id, spotifyId));
+  }
+
   return {
     status,
     error,
@@ -182,6 +200,9 @@ export function useEncoreData(user: User | null) {
     createList,
     deleteList,
     updateList,
+    playlists,
+    addPlaylist,
+    removePlaylist,
   };
 }
 

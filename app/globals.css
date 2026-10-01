@@ -42,7 +42,92 @@
   --shadow-md: 0 12px 28px -10px rgba(0, 0, 0, 0.45);
 
   /* The fallback inside var() is used if the Geist font variable is ever missing */
+  /* Header buttons and banners (these change in dark mode) */
+  --strong-bg: #111111; /* "Log in" / "Log out" pill */
+  --strong-text: #ffffff;
+  --outline-bg: #ffffff;
+  --outline-hover: #ececef;
+  --outline-border: #d4d4d8;
+  --card-border: transparent; /* cards don't need an edge on a light page: the shadow does that job */
+  --notice-bg: #e3f8ec;
+  --notice-text: #0b6b37;
+  --error-bg: #ffe5e8;
+  --error-text: #b00020;
+
+  /* Match status colors in the playlist builder (tint = soft background, edge = border, ink = text) */
+  --blue-tint: rgba(10, 132, 255, 0.14);
+  --blue-edge: rgba(10, 132, 255, 0.55);
+  --blue-ink: #64b5ff;
+  --red-tint: rgba(255, 77, 94, 0.12);
+  --red-edge: rgba(255, 77, 94, 0.55);
+  --red-ink: #ff7a86;
+  --amber-tint: rgba(255, 176, 32, 0.12);
+  --amber-edge: rgba(255, 176, 32, 0.5);
+  --amber-ink: #ffc14d;
+
   --font: var(--font-geist-sans, system-ui), system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* ---------- Dark mode ----------
+   The same variables with dark values. The <html> tag gets data-theme="dark"
+   (set by the script in layout.tsx and the sun/moon button), and every rule
+   that uses these variables switches automatically. */
+
+/* Dark gray page with near-black cards: the same idea as light mode (dark cards on a lighter page),
+   so both themes feel like one design, and the soft shadows stay visible on gray */
+:root[data-theme="dark"] {
+  --bg: #232325;
+  --text: #f5f5f7;
+  --text-muted: #9a9aa0;
+
+  --card: linear-gradient(165deg, #1a1a1c 0%, #111113 100%);
+  --card-border: rgba(255, 255, 255, 0.05);
+  --shadow-lg: 0 40px 80px -30px rgba(0, 0, 0, 0.65), 0 12px 24px -12px rgba(0, 0, 0, 0.45);
+
+  --strong-bg: #ffffff;
+  --strong-text: #111111;
+  --outline-bg: #2d2d30;
+  --outline-hover: #38383c;
+  --outline-border: #3f3f44;
+  --notice-bg: #0f2a1b;
+  --notice-text: #5ee39a;
+  --error-bg: #2d1115;
+  --error-text: #ff8a95;
+
+  color-scheme: dark; /* tells the browser to use dark scrollbars and form controls too */
+}
+
+/* ---------- Theme switch fade ----------
+   While switching light/dark, ThemeToggle adds this class for a moment, so colors
+   fade instead of snapping. It's only on during the switch, so normal hover effects
+   stay instant. (Browsers that support the View Transitions API use a cross-fade instead.) */
+
+.theme-fading,
+.theme-fading * {
+  transition:
+    background-color 0.35s ease,
+    color 0.35s ease,
+    border-color 0.35s ease,
+    box-shadow 0.35s ease !important;
+}
+
+/* The cross-fade used by the View Transitions API */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.35s;
+}
+
+/* People who've asked their device to reduce motion get an instant switch */
+@media (prefers-reduced-motion: reduce) {
+  .theme-fading,
+  .theme-fading * {
+    transition: none !important;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
 }
 
 /* ---------- Base ---------- */
@@ -87,6 +172,8 @@ select {
 }
 
 .brand {
+  color: var(--text);
+  text-decoration: none;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -127,13 +214,30 @@ select {
 
 /* A light button for the page background (not on a dark card) */
 .btn-outline {
-  background: #ffffff;
+  background: var(--outline-bg);
   color: var(--text);
-  border: 1px solid #d4d4d8;
+  border: 1px solid var(--outline-border);
 }
 
 .btn-outline:hover:not(:disabled) {
-  background: #ececef;
+  background: var(--outline-hover);
+}
+
+/* Round icon-only button (the sun/moon theme switch) */
+.icon-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid var(--outline-border);
+  background: var(--outline-bg);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--outline-hover);
 }
 
 .btn-spotify {
@@ -146,8 +250,8 @@ select {
 }
 
 .top-error {
-  background: #ffe5e8;
-  color: #b00020;
+  background: var(--error-bg);
+  color: var(--error-text);
   border-radius: var(--radius-md);
   padding: 12px 16px;
   margin-bottom: 20px;
@@ -166,6 +270,11 @@ select {
   z-index: 100; /* sit above everything else on the page */
 }
 
+/* Confirmation pop-ups can open on top of other pop-ups */
+.modal-backdrop.on-top {
+  z-index: 200;
+}
+
 .modal {
   width: 100%;
   max-width: 420px;
@@ -173,8 +282,8 @@ select {
 }
 
 .top-notice {
-  background: #e3f8ec;
-  color: #0b6b37;
+  background: var(--notice-bg);
+  color: var(--notice-text);
   border-radius: var(--radius-md);
   padding: 12px 16px;
   margin-bottom: 20px;
@@ -199,6 +308,7 @@ select {
 
 .card {
   background: var(--card);
+  border: 1px solid var(--card-border);
   color: var(--card-text);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
@@ -283,8 +393,8 @@ select {
 }
 
 .btn-dark {
-  background: #111111;
-  color: #ffffff;
+  background: var(--strong-bg);
+  color: var(--strong-text);
 }
 
 .btn-ghost {
@@ -295,6 +405,16 @@ select {
 
 .btn-ghost:hover:not(:disabled) {
   background: var(--surface-hover);
+}
+
+/* For actions that delete things */
+.btn-danger {
+  background: var(--red);
+  color: #ffffff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #ff6674;
 }
 
 .btn-small {
@@ -427,19 +547,31 @@ select {
   box-shadow: inset 0 0 0 1px var(--green);
 }
 
+/* Date and place stand out most, since you already know which artist you searched for */
 .concert-date {
-  font-size: 13px;
-  color: var(--card-muted);
-}
-
-.concert-artist {
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-.concert-place {
+.concert-city {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.concert-tour {
+  align-self: flex-start;
+  background: rgba(255, 204, 0, 0.14);
+  color: var(--yellow);
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.concert-meta {
   color: var(--card-muted);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .concert-actions {
@@ -683,6 +815,124 @@ details ol {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+}
+
+/* ---------- Playlist builder ---------- */
+
+.modal.wide {
+  max-width: 760px;
+  max-height: 88vh;
+  overflow-y: auto; /* long song lists scroll inside the pop-up */
+}
+
+.match-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.match-row.skipped {
+  opacity: 0.4;
+}
+
+.match-track {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  min-width: 0;
+}
+
+/* Matched: a blue bubble */
+.match-track.found {
+  background: var(--blue-tint);
+  border-color: var(--blue-edge);
+}
+
+/* Not found: the whole row is tinted red */
+.match-row.not-found {
+  grid-template-columns: 1fr auto; /* no track bubble: just the song, then the Search button */
+  background: var(--red-tint);
+  border: 1px solid var(--red-edge);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.section-red {
+  color: var(--red-ink);
+}
+
+.pill-blue {
+  background: var(--blue-tint);
+  border-color: var(--blue-edge);
+  color: var(--blue-ink);
+}
+
+.pill-red {
+  background: var(--red-tint);
+  border-color: var(--red-edge);
+  color: var(--red-ink);
+}
+
+.pill-amber {
+  background: var(--amber-tint);
+  border-color: var(--amber-edge);
+  color: var(--amber-ink);
+}
+
+.panel.panel-amber {
+  background: var(--amber-tint);
+  border-color: var(--amber-edge);
+}
+
+.match-options {
+  grid-column: 1 / -1; /* spans the whole row */
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.progress {
+  height: 8px;
+  background: var(--surface);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--spotify-green);
+  transition: width 0.2s ease;
+}
+
+.tier-pick {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.tier-pick label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .match-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .match-row .match-track {
+    grid-column: 1 / -1;
+    order: 3;
+  }
 }
 
 /* ---------- Footer ---------- */

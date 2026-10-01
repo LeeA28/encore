@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { COOKIE, getConfig, requestTokens, saveTokens } from "@/lib/spotifyAuth";
+import { getOrigin } from "@/lib/siteUrl";
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
@@ -14,11 +15,11 @@ export async function GET(request: NextRequest) {
   store.delete(COOKIE.state);
   store.delete(COOKIE.returnTab);
 
-  // Back to the tab the user started from, with an error message if something went wrong
+  // Back to the tab the user started from, with an error message if something went wrong.
+  // getOrigin (not request.url) keeps you on the exact address you were using, like 127.0.0.1:3000.
+  const origin = getOrigin(request);
   const back = (error?: string) =>
-    NextResponse.redirect(
-      new URL(`/?tab=${tab}${error ? `&spotifyError=${encodeURIComponent(error)}` : ""}`, request.url)
-    );
+    NextResponse.redirect(`${origin}/?tab=${tab}${error ? `&spotifyError=${encodeURIComponent(error)}` : ""}`);
 
   if (params.get("error")) return back("Spotify login was cancelled.");
   if (!code || !state || state !== savedState) return back("Spotify login failed. Please try again.");

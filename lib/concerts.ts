@@ -20,6 +20,11 @@ export function formatDate(isoDate: string): string {
   return date.toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" });
 }
 
+// "Toronto, Canada" (skipping any parts that are missing)
+export function formatCity(c: Concert): string {
+  return [c.city, c.country].filter(Boolean).join(", ");
+}
+
 // "Danforth Music Hall, Toronto, Canada" (skipping any parts that are missing)
 export function formatPlace(c: Concert): string {
   return [c.venue, c.city, c.country].filter(Boolean).join(", ");
@@ -39,6 +44,7 @@ export function toConcert(s: SetlistFmSetlist): Concert {
     venue: s.venue.name,
     city: s.venue.city?.name ?? "", // "?." stops safely if city is missing, then "??" gives ""
     country: s.venue.city?.country?.name,
+    tour: s.tour?.name,
     url: s.url,
     songs,
   };

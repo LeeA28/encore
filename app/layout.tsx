@@ -17,9 +17,25 @@ export const metadata: Metadata = {
   description: "See every song you've heard live",
 };
 
+// Runs before the page is drawn, so the saved theme (or the device's light/dark setting) is applied
+// right away. Without this, dark mode users would see a white flash on every page load.
+const themeScript = `
+try {
+  var theme = localStorage.getItem("encore:theme");
+  if (theme !== "light" && theme !== "dark") {
+    theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  document.documentElement.dataset.theme = theme;
+} catch (e) {}
+`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+    // suppressHydrationWarning: the theme script changes <html> before React loads, which is expected
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>{children}</body>
     </html>
   );

@@ -45,8 +45,14 @@ A complete walkthrough of how Encore works, step by step, so you can read throug
 
 - Create a project at supabase.com, and save the database password somewhere safe
 - Create the tables: SQL Editor → New query → paste all of `supabase/schema.sql` → Run
-  - You should see "Success. No rows returned." The three tables then appear under Table Editor
-- Turn off email confirmation while developing: Authentication → Sign In / Providers → Email → switch off "Confirm email" (turn it back on before launching)
+  - You should see "Success. No rows returned." The tables then appear under Table Editor
+  - Already ran an older `schema.sql`? Run `supabase/update-002.sql` instead: it adds tour names and the `playlists` table without touching your data
+  - Seeing `relation "concerts" already exists`? The setup already ran once. Check Table Editor before running anything again
+- Email confirmation (checks that emails are real): Authentication → Sign In / Providers → Email → "Confirm email"
+  - Add `http://127.0.0.1:3000/**` under Authentication → URL Configuration → Redirect URLs. Supabase only sends people back to addresses on this list, which stops attackers from using your confirmation emails to redirect people elsewhere
+  - The default email works as-is: its link confirms the email, then sends people to `/auth/callback`, which logs them in (in the same browser they signed up with)
+  - Templates can only be edited after connecting a custom email provider (Authentication → SMTP). Once you have one, you can switch the link to `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`, which also works across devices. The `/auth/confirm` page is already built for that
+  - Supabase's built-in email sender is only meant for testing (it's heavily rate-limited, and may only deliver to your own team's addresses). Before real users sign up, connect a custom email provider
 - Set the Site URL: Authentication → URL Configuration → `http://127.0.0.1:3000`
 - Add to `.env.local`, then restart the dev server:
   - `NEXT_PUBLIC_SUPABASE_URL=` the Project URL
@@ -102,7 +108,12 @@ components/
   RankTab.tsx                Rank tab: switches between live songs and custom lists
   TierBoard.tsx              The drag-and-drop S/A/B/C/D tier list (used by both modes)
   Workspace.tsx              Owns the user's data (via useEncoreData) and shows the current tab
-  AuthModal.tsx              The log in / sign up pop-up
+  AuthModal.tsx              The log in / sign up pop-up (with resend confirmation email)
+  ThemeToggle.tsx            The sun/moon light/dark mode button
+  ConfirmDialog.tsx          Encore's "are you sure?" pop-up, used through useConfirm()
+  PlaylistList.tsx           "Your playlists": detects playlists deleted in Spotify, Restore and Remove
+  PlaylistBuilder.tsx        Match songs to Spotify, review and fix matches, create the playlist
+  TierPlaylistButton.tsx     Pick tiers from a tier list, then open the playlist builder
   CustomLists.tsx            Create, pick, and delete custom lists
   SpotifyAdder.tsx           Search Spotify and add songs to a custom list
   Icons.tsx                  Small hand-drawn SVG icons (logo, ticket, note, tier stack)
@@ -122,9 +133,21 @@ lib/
   accountData.ts             Reading and saving data in Supabase, and merging guest data into an account
   supabase/client.ts         Creates the Supabase client used in the browser
   supabase/proxy.ts          Refreshes login sessions (used by /proxy.ts)
+  supabase/server.ts         The Supabase client for server code (email confirmation)
+  siteUrl.ts                 The real address to redirect back to (not the dev server's "localhost")
+  emailDomains.ts            The list of email providers allowed for sign-up
+  matching.ts                Pure: Spotify search queries and scoring for song matching
+  matchCache.ts              Remembers matched tracks in the browser
 next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotify login)
 proxy.ts                     Runs before each page request: keeps the Supabase login fresh
+app/auth/confirm/route.ts    Where custom-template confirmation links land (for later, with custom SMTP)
+app/auth/callback/route.ts   Where the default confirmation email lands: logs you in
+app/api/spotify/match        Server: matches songs to Spotify tracks
+app/api/spotify/playlists    Server: creates a playlist and adds its tracks
+app/api/spotify/playlists/status   Server: which playlists are still in your Spotify library
+app/api/spotify/playlists/restore  Server: adds a deleted playlist back to your library
 supabase/schema.sql          The database tables and security rules (paste into Supabase's SQL editor)
+supabase/update-002.sql      Adds tour names and the playlists table to an existing database
 ```
 
 - A pattern to notice: `lib/` holds logic (no UI), `components/` holds UI (little logic), `app/` holds pages and routes
@@ -567,6 +590,200 @@ supabase/schema.sql          The database tables and security rules (paste into 
 
 ---
 
+## Step 13: Polish from testing
+
+### What changed
+
+- **Clicking "Encore" reloads the page**: it's a plain `<a href="/">` instead of Next.js's `<Link>`, since `<Link>` switches pages without reloading (and there's only one page)
+- **Concert cards redesigned for scanning**: date and city are the biggest text, the tour name is a yellow pill, and the artist and venue are small and quiet, since you already know which artist you searched. The song count is gone (the setlist is still one click away)
+  - Tour names come from setlist.fm's `tour.name`, and are saved in a new `tour` database column
+- **Search as you type**: results update as you type, and clearing the artist clears them
+  - **Debouncing** again: the search waits until you pause typing for 600ms, to stay within setlist.fm's limits (2 requests per second, 1,440 per day)
+  - **Cancelling stale searches** with `AbortController`: if you keep typing, the previous request is cancelled. Otherwise, a slow old response could arrive after a newer one and replace the right results with outdated ones (a "race condition")
+  - Partial years like "20" don't trigger a search, and the year box only accepts digits
+- **Dark mode**, with a sun/moon button in the header
+  - Every color is a CSS variable, so dark mode is just a second set of values under `:root[data-theme="dark"]`. The button changes `data-theme` on `<html>`, and everything switches instantly
+  - The first visit follows your device's light/dark setting; after that, your choice is remembered
+  - A tiny script in `layout.tsx` sets the theme *before* the page is drawn. Without it, dark mode users would see a white flash on every load
+  - On a black page, shadows barely show, so dark cards get a faint 1px border instead
+- **Real email checks**: with "Confirm email" turned on, signing up sends a confirmation link, and the account only works once it's clicked. Only the owner of the inbox can click it, which is how you know the email is real
+  - The link goes to `/auth/confirm`, where the server calls `supabase.auth.verifyOtp` to verify it and log you in
+  - Trying to log in before confirming shows a clear message and a "Resend confirmation email" button
+
+---
+
+## Step 14: Spotify playlists
+
+### What you built
+
+- "Make a playlist" on the Songs tab (every song you've heard live, most heard first) and on any tier list (pick tiers, like S and A)
+- A playlist builder: automatic matching, a review screen to change or skip matches and search for songs that weren't found, then the playlist is created in your Spotify account
+- "Your playlists" on the Songs tab, saved to your account (or the browser, as a guest)
+
+### Matching: the core of Encore (`lib/matching.ts`)
+
+- Each song is searched on Spotify up to three ways, from most to least precise:
+  - `track:"Song" artist:"Artist"`: Spotify's search filters, which only look in that field
+  - For covers: the same with the original artist, since the performer may never have recorded it
+  - A loose search of the title and artist, as a last resort
+- Every result gets a score:
+  - Same cleaned title: +50. Title starts with the other (like "Song" vs. "Song, Pt. 1"): +20. Different title: 0, never used
+  - The performing artist: +40. The original artist of a cover: +30
+  - A live, remix, or karaoke version when the song itself isn't one: −30
+- 70 or more (right title plus right artist) is accepted automatically. 90 or more is excellent, so the remaining searches are skipped to save requests
+- Examples, for "Creep" by Radiohead:
+  - "Creep" by Radiohead: 50 + 40 = **90**, accepted
+  - "Creep - Remastered 2008" by Radiohead: the title cleans to "Creep", so also **90**
+  - "Creep - Live" by Radiohead: 50 + 40 − 30 = **60**, not automatic, but offered under "Change"
+  - "Creep" by a different band: 50, a candidate only
+  - "Creeping Death" by Metallica: 20, basically never chosen
+- The match rate (shown in the builder) is a great resume number: "matched 9X% of songs automatically"
+
+### How the pieces fit
+
+- The browser sends songs to `/api/spotify/match` in batches of 10, which shows progress and paces the requests for Spotify's rate limit
+- Songs from custom lists already have Spotify IDs, so they skip matching entirely
+- Matches you create playlists with are saved in a browser cache (`encore:matchCache`), so the same song is instant next time. It's only a cache: losing it just means searching again
+- `/api/spotify/playlists` creates a **private** playlist (`POST /me/playlists`), then adds tracks in chunks of 100, Spotify's limit per request
+- Two songs can match the same track (like two spellings of one song), so track IDs are deduplicated with a `Set` before creating
+- The playlist is recorded in the new `playlists` table, with the same Row Level Security rules as the other tables
+
+---
+
+## Step 15: Fixes from testing (round 2)
+
+### Playlist matching that survives errors
+
+- A temporary `502` from Spotify used to wipe out the whole matching run, putting every song in "Not found"
+- Now, in layers:
+  - **Retries with exponential backoff** (`spotifyGet` in `lib/spotify.ts`): temporary errors (`429`, `500`, `502`, `503`, `504`, and network hiccups) are retried up to 3 more times, waiting 0.5s, then 1s, then 2s. Doubling the wait each time gives an overloaded server room to recover. For `429`, Spotify's `Retry-After` header says exactly how long to wait, so that's used instead
+  - **One failure doesn't spread**: if one search style fails for a song, the next style is tried. If every search for a song fails, it's marked "couldn't check" instead of "not found," since those mean different things
+  - Login errors (`401`, `403`) still stop everything right away, since they'd affect every song
+  - **"Retry these"**: songs that couldn't be checked get their own section and a button to search just those again
+  - A little more spacing between searches (200ms), so errors are less likely in the first place
+
+### The playlist builder can't close by accident
+
+- Clicking the dimmed background no longer closes it: during a long matching run, a stray click threw everything away
+- "Cancel" (while matching) and "Close" (while reviewing) ask for confirmation first
+- Cancelling calls `abort()` on an `AbortController`, which stops the requests in progress and prevents new ones, instead of leaving them running in the background using up Spotify requests
+
+### Playlist order: grouped by artist (`groupByArtist` in `lib/songs.ts`)
+
+- "Every song I've heard live" playlists keep each artist's songs together
+  - Artists are ordered by their most-heard song, with ties broken by total plays, then alphabetically
+  - Within an artist, songs go from most to least heard
+- Example: A by X ×6, E by Y ×5, F by Y ×4, B by X ×3, C by X ×2, D by X ×1 → A, B, C, D, E, F
+  - Artist X goes first because its top song (A, ×6) beats artist Y's top song (E, ×5)
+- How it works: group songs into a `Map` by artist, sort inside each group, sort the groups by their first (most-heard) song, then `.flat()` joins the groups back into one list
+- Tier list playlists keep tier order (S, then A...), since that's the order you chose
+
+### Redirects to the right address (`lib/siteUrl.ts`)
+
+- After Spotify login, you were sent to `localhost:3000` even if you started on `127.0.0.1:3000`. Since cookies belong to one exact address, that looked like being disconnected
+- Why: redirects were built from `request.url`, which Next.js's dev server reports as `localhost` no matter what the browser used
+- Fix: `getOrigin` uses the request's `Host` header, which is the address the browser actually used. Once deployed, a `SITE_URL` environment variable can pin it to the real site address
+
+### Sign-up only with common email providers (`lib/emailDomains.ts`)
+
+- The part after `@` must exactly match a list of well-known providers (Gmail, Outlook, Hotmail, Yahoo and its regional versions, iCloud, Proton, and more)
+- This catches typos like `mgail.com` before a confirmation email is sent to an inbox that doesn't exist. Bounced emails count against a Supabase project's email sending
+- A `Set` is used for the list, since checking whether a `Set` contains something is instant, no matter how big it is
+- Tradeoff: school, work, and custom-domain emails are blocked too. Add domains to the list to allow them
+- This check runs in the browser, so it stops honest mistakes, not determined people. To enforce it strictly, Supabase supports a "before user created" auth hook (a database function that can reject sign-ups)
+
+### Logging in automatically after confirming (`app/auth/callback/route.ts`)
+
+- The default confirmation email confirms the address, then sends people to `/auth/callback?code=...`
+- The server trades that one-time code for a login session (`exchangeCodeForSession`), the same idea as the Spotify callback
+- **PKCE** (Proof Key for Code Exchange): at sign-up, the browser stored a secret, and the code only works together with it. That way, someone who intercepts the link can't use it to log in as you. The downside is that it only works in the same browser; on another device, the email is still confirmed, and the page asks you to log in
+
+---
+
+## Step 16: Encore's own pop-ups, and friendlier errors
+
+### A reusable confirmation pop-up (`components/ConfirmDialog.tsx`)
+
+- Replaces the browser's built-in `confirm()` box, which can't be styled, in three places: disconnecting Spotify, deleting a list, and cancelling or closing the playlist builder
+- Buttons name the action ("Disconnect," "Delete list," "Stop") instead of a vague "OK," and deleting uses a red button as a warning
+- Escape or clicking outside cancels; the confirm button is focused when it opens, so Enter confirms
+- **How it works**:
+  - `ConfirmProvider` wraps the whole app (in `EncoreApp`) and holds one pop-up's state
+  - **React Context** lets any component, however deep, reach the provider's `confirm` function through `useConfirm()`, without passing it down through every component as a prop
+  - `confirm({...})` returns a **Promise** that resolves to `true` or `false` when a button is clicked. So code can simply `await` the answer: `if (!(await confirm({...}))) return;`
+  - The Escape listener is added with `useEffect` only while the pop-up is open, and its cleanup function removes it when it closes (otherwise listeners would pile up)
+  - `z-index: 200` puts it above the playlist builder (100), since it can be opened from there
+
+### Other fixes
+
+- The playlist builder, when Spotify isn't connected, shows "To make a playlist, please connect your Spotify account" with a Connect Spotify button, which sends you back to the same tab afterward. Its button says "Close" and doesn't ask for confirmation, since nothing has started
+- Login and sign-up errors are translated into plain language (`friendlyError` in `AuthModal.tsx`), using Supabase's error codes, like `over_email_send_rate_limit` becoming "Too many sign-up emails have been sent recently..."
+
+### Playlist review colors
+
+- Not found songs are at the top, since they need attention: red heading with a count, red-tinted rows, and a dashed red "No match" bubble
+- Songs that couldn't be checked (Spotify errors) come next in an amber panel with "Retry these"
+- Matched songs are last, with blue track bubbles. The summary pills at the top use the same colors
+- Each color is three CSS variables: a soft background (`--red-tint`), a border (`--red-edge`), and text (`--red-ink`), so they stay consistent everywhere they're used
+
+### Fading between light and dark mode (`ThemeToggle.tsx`)
+
+- **View Transitions API** (Chrome, Edge, Safari): `document.startViewTransition(() => applyTheme(next))`. The browser captures the page, applies the change, then cross-fades from the old picture to the new one
+- **Fallback** for other browsers: the `theme-fading` class turns on color transitions on every element for 0.4 seconds, just long enough for the fade, then it's removed so hover effects stay instant
+  - Checking `if (document.startViewTransition)` before using it is called *feature detection*: use the better tool when the browser has it, and fall back when it doesn't
+- If someone's device is set to reduce motion (`prefers-reduced-motion`), the switch stays instant. Respecting that setting is an accessibility habit worth keeping for every animation
+
+### Splitting medleys (`splitMedley` in `lib/songs.ts`)
+
+- Found by measuring: the only 2 songs matching couldn't find (out of 77) were both medleys, like "It Will Rain / Talking to the Moon / When I Was Your Man"
+- setlist.fm lists songs played back-to-back as one entry, separated by " / ". Spotify has each song, but not the combination
+- `splitMedley` splits on " / " (with spaces), so each part counts and matches as its own song. Titles like "Face/Off" have no spaces around the slash, so they stay whole
+- It runs in `countSongs`, not when concerts are saved, so concerts saved before this change benefit too, and the concert's setlist still shows the original entry
+- A song heard both in a medley and on its own at the same show still counts once for that show, thanks to the existing `concertIds` check
+- A good example of fixing a data problem with a simple rule, before reaching for AI
+
+### Other visual changes
+
+- Not-found rows no longer show a "No match" bubble, since the red row already says it. The row is just the song and a Search button
+- Dark mode is now a dark gray page (`#232325`) with near-black cards, instead of a black page. It mirrors light mode (dark cards on a lighter page), so both themes feel like one design, and the soft card shadows are visible again
+
+### Email sending limits (custom SMTP)
+
+- Supabase's built-in email sender allows only a few emails per hour for the whole project, and may only deliver to your own team's addresses
+- A custom email provider (SMTP: the standard way programs send email) removes that. Supabase connects to it under Authentication → SMTP Settings, with a host, port, username, password, and sender address
+- Once it's connected, the email rate limit can be raised (Authentication → Rate Limits), and email templates become editable
+
+---
+
+## Step 17: Restoring playlists deleted in Spotify
+
+### What "deleting" a playlist means on Spotify
+
+- Deleting a playlist you made doesn't erase it. Spotify only removes it from your library; the playlist, its songs, and its link still exist
+- So "was it deleted?" really means "is it still in my library?", and restoring it means adding it back, which keeps the same songs, order, and link
+
+### How Encore handles it (`components/PlaylistList.tsx`)
+
+- When "Your playlists" appears, Encore asks Spotify once which of them are still in your library
+- Playlists that aren't show a red "Deleted in Spotify" label, with **Restore** (adds it back) instead of Open
+- Every playlist has **Remove**, which takes it off Encore's list (with a confirmation pop-up). It doesn't touch Spotify
+- **Why check ahead of time instead of when you click Open**: browsers block new tabs that open after a delay (like waiting for Spotify to answer), treating them as unwanted pop-ups. Checking first means Open still opens instantly, as a normal link
+
+### The Spotify endpoints (from the February 2026 API changes)
+
+- `GET /me/library/contains?uris=spotify:playlist:...`: answers true/false for many items at once, in the same order as asked. It's checked in groups of 20
+- `PUT /me/library?uris=spotify:playlist:...`: adds an item to your library. It replaced the old "follow playlist" endpoint
+- Spotify identifies things with **URIs** like `spotify:playlist:abc123`: the type plus the id, so one endpoint can handle tracks, albums, and playlists
+- The routes only accept ids made of letters and numbers, so nothing unexpected can be slipped into the request to Spotify (a habit called *input validation*)
+- `spotifyGet` now handles empty responses too, since saving to the library succeeds without sending anything back
+
+### New Spotify permissions (scopes)
+
+- `playlist-read-private`, `user-library-read`, and `user-library-modify` were added, for checking and restoring
+- Permissions are granted when you connect, so existing connections need to **disconnect and reconnect** once to get the new ones. Until then, the check quietly fails and the list shows as before
+
+---
+
 ## Things to test and play with
 
 - **Search**
@@ -588,6 +805,21 @@ supabase/schema.sql          The database tables and security rules (paste into 
   - Press Escape mid-drag: the song should go back where it was
   - Remove a concert and check that its songs disappear from the tiers
   - Try it on your phone (press and hold to drag)
+- **Polish**
+  - Click "Encore" (the page reloads), switch dark mode on and off, and refresh (your choice is remembered)
+  - Type an artist slowly and quickly, then delete it: results should follow along and clear
+  - Check that concerts with tours show the yellow tour pill
+- **Round 2 fixes**
+  - Disconnect and reconnect Spotify while on `127.0.0.1:3000`: you should land back on `127.0.0.1`
+  - Try signing up with `@mgail.com`: it should be refused with a clear message
+  - Sign up with a real email, click the link in the email, and you should arrive logged in
+  - Start a playlist and click the dimmed background (nothing happens), then Cancel (asks first)
+  - Check that a "songs heard live" playlist is grouped by artist in Spotify
+- **Playlists**
+  - Songs tab → Make a playlist: watch the progress, then review. Try Change, Skip, and searching for a not-found song. Create it and open it in Spotify
+  - Rank tab → Make a playlist → pick S and A → create
+  - Make a second playlist from the same songs: matching should be almost instant (cached)
+  - Note your match rate, and which kinds of songs weren't found
 - **Accounts**
   - As a guest, add a couple of concerts and rank a few songs, then sign up: the green banner should appear, and your data should still be there
   - Refresh: still logged in, with the same data
@@ -606,11 +838,12 @@ supabase/schema.sql          The database tables and security rules (paste into 
 ## Known limitations (on purpose, for now)
 
 - Guest data lives in one browser only (and one address: `localhost` and `127.0.0.1` count as different sites). Accounts fix this
-- Email confirmation is off for development. Turn it on in Supabase before launching
+- Supabase's built-in email sender is for testing only; connect a custom email provider before real users sign up
 - No "forgot password" flow yet
 - If the same account is open in two tabs, the last save wins (changes in one tab don't appear in the other until refresh)
 - Search needs an artist name. You can't search by venue or date alone
-- "Make a playlist" is still a placeholder, but the Spotify login it needs is now done
+- Playlists are always new (updating an existing playlist isn't supported yet), and always private
+- Search-as-you-type uses more of setlist.fm's 1,440 daily requests than a search button did
 - Search results are 20 per page, newest first, so older shows may need "Load more" or filters
 - Name normalizing catches small differences but not bigger ones like "Pt. 2" vs "Part 2"
 - Discographies are capped at 60 releases, so very prolific artists may be missing some older songs
@@ -623,8 +856,8 @@ supabase/schema.sql          The database tables and security rules (paste into 
 ## What comes next
 
 - **Phase 2: Supabase accounts** (done)
-- **Phase 3: Spotify playlists**
-  - Spotify login is already done. What's left: matching songs heard live to Spotify tracks (handling covers, missing songs, and versions), creating playlists, and a shared table of confirmed matches
+- **Phase 3: Spotify playlists** (done)
+  - Still to come: a shared table of confirmed matches, so one person's fix helps everyone
   - Remember Spotify's current limits: the app owner needs Premium, and dev mode allows 5 users
 - **Phase 4: the AI agent**
   - Finds songs that normal matching missed, with the user confirming every suggestion
@@ -639,6 +872,9 @@ supabase/schema.sql          The database tables and security rules (paste into 
 - **Choosing tiers over pairwise ranking, using math**: any pairwise method needs at least log₂(n!) comparisons (about 525 for 100 songs), while tiers need n decisions
 - **Drag and drop across multiple lists**: a temporary drag state that's only saved on drop, plus accessibility through keyboard sensors
 - **OAuth done securely**: the authorization code flow, CSRF protection with `state`, httpOnly cookies, and automatic token refresh
+- **Song matching with a scoring system**: multiple search strategies, a score for title, artist, and version, automatic thresholds, and a measured match rate
+- **Resilience to flaky APIs**: retries with exponential backoff, isolating failures per song, and separating "failed" from "not found"
+- **Race conditions in search-as-you-type**: debouncing plus cancelling stale requests with `AbortController`
 - **Database security with Row Level Security**: why a public key is safe when Postgres enforces per-user access rules
 - **Designing an idempotent data migration**: merging guest data safely even when it runs twice
 - **Optimistic updates with debounced saves**, plus flushing pending saves before logout
