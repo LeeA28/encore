@@ -142,6 +142,7 @@ lib/
   authErrors.ts              Turns Supabase's error codes into plain-language messages
   matching.ts                Pure: Spotify search queries and scoring for song matching
   matchCache.ts              Remembers matched tracks in the browser
+  sharedMatches.ts           The shared match table: reading shared matches, saving your votes, and which match wins
   database.types.ts          Generated from the database: every table and column's type (npm run db:types)
   db.ts                      Short names for the database types: Row<"concerts">, Insert<...>, EncoreSupabase
 next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotify login)
@@ -953,6 +954,51 @@ vitest.config.mts            Test settings (including the time zone tests run in
 
 ---
 
+## Step 22: The shared match table
+
+### The idea
+
+- When you make a playlist, the Spotify track used for each song counts as your **vote** for it (matches you left as-is count too, since you reviewed them; skipped songs don't)
+- Once **2 or more people** agree on a track for a song, with no tie, it becomes the **shared match**, and everyone's matching uses it instead of searching Spotify
+- So a fix spreads: once a couple of people correct a bad match, nobody else hits it. And matching gets faster as Encore is used more, with fewer Spotify requests
+
+### The database (`supabase/migrations/20261003000000_shared_matches.sql`)
+
+- `match_votes`: one row per person per song (`primary key (user_id, song_key)`). Picking a different track later *moves* your vote, so one person can't vote twice
+- It stores the track's name, artist, and album too, so a shared match can be shown without asking Spotify
+- An **index** on `song_key` makes "all votes for these songs" fast, like a book's index lets you jump to a topic instead of reading every page
+- **Row Level Security**: you can only see and change your own votes, so nobody can find out which songs someone else has heard live
+
+### Counting votes safely: `get_shared_matches`
+
+- A database function, called from the app with `supabase.rpc("get_shared_matches", { song_keys })`
+- It's `security definer`: it runs with the database owner's permissions, so it can count *everyone's* votes even though each user can only read their own. That's safe because it only ever returns totals, never who voted
+- `set search_path = ''` is a standard safety habit for such functions: every table is written in full (`public.match_votes`), so nothing else can be swapped in
+- How it picks a winner, in SQL:
+  - `count(*) ... group by song_key, track_id`: votes per track, per song
+  - `rank() over (partition by song_key order by votes desc)`: 1 for the most-voted track of each song. **Window functions** like `rank() over (...)` calculate across groups of rows without collapsing them
+  - `count(*) over (partition by song_key, votes)`: how many tracks share that vote count. More than 1 means a tie
+  - Kept only when it's first place, not tied, and has at least 2 votes
+- Tested in an in-memory Postgres database (PGlite) with sample votes: 2 votes for one track → shared; a single vote → not shared; a 2–2 tie → not shared; 3–1 → the winner with 3
+
+### Who can do what
+
+- **Everyone, including guests**, can use shared matches
+- **Only logged-in users** can vote. Accounts need confirmed real emails, so pushing a bad match alone would take two real inboxes, and real users' votes can still outnumber it
+
+### Which match a song uses (`resolveKnownMatch`, tested)
+
+- In order: a track the song came with (custom list songs from Spotify), then **your own earlier choice**, then the **shared match**, then a normal Spotify search
+- Shared matches show "Confirmed by N people" in the review screen. Changing one makes it your own choice
+- Votes are saved in the background after the playlist is created, so if saving fails, your playlist is still made
+- If the shared table can't be reached, matching simply searches Spotify as before: shared matches are a bonus, never a requirement
+
+### Applying it (the new migration workflow)
+
+- `npm run db:push` applies the new migration to your database, then `npm run db:types` regenerates the types (now including `match_votes` and the function)
+
+---
+
 ## Things to test and play with
 
 - **Search**
@@ -1025,7 +1071,7 @@ vitest.config.mts            Test settings (including the time zone tests run in
 
 - **Phase 2: Supabase accounts** (done)
 - **Phase 3: Spotify playlists** (done)
-  - Still to come: a shared table of confirmed matches, so one person's fix helps everyone
+  - The shared match table (done): one person's fix helps everyone, once 2+ people agree
   - Remember Spotify's current limits: the app owner needs Premium, and dev mode allows 5 users
 - **Phase 4: the AI agent**
   - Finds songs that normal matching missed, with the user confirming every suggestion
@@ -1045,6 +1091,7 @@ vitest.config.mts            Test settings (including the time zone tests run in
 - **Automated tests and CI**: 42 tests on the core logic, regression tests for real bugs, and checks on every push
 - **Resilience to flaky APIs**: retries with exponential backoff, isolating failures per song, and separating "failed" from "not found"
 - **Race conditions in search-as-you-type**: debouncing plus cancelling stale requests with `AbortController`
+- **A crowdsourced match table with privacy**: votes hidden by RLS, totals exposed through a security definer function, and a tie-aware winner picked with SQL window functions
 - **Database security with Row Level Security**: why a public key is safe when Postgres enforces per-user access rules
 - **Designing an idempotent data migration**: merging guest data safely even when it runs twice
 - **Optimistic updates with debounced saves**, plus flushing pending saves before logout

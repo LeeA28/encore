@@ -129,6 +129,36 @@ export type Database = {
         }
         Relationships: []
       }
+      match_votes: {
+        Row: {
+          song_key: string
+          track_album: string | null
+          track_artist: string
+          track_id: string
+          track_name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          song_key: string
+          track_album?: string | null
+          track_artist: string
+          track_id: string
+          track_name: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          song_key?: string
+          track_album?: string | null
+          track_artist?: string
+          track_id?: string
+          track_name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       playlists: {
         Row: {
           created_at: string
@@ -167,7 +197,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_shared_matches: {
+        Args: { song_keys: string[] }
+        Returns: {
+          song_key: string
+          track_album: string
+          track_artist: string
+          track_id: string
+          track_name: string
+          votes: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

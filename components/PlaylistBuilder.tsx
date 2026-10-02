@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SavedPlaylist, TrackMatch } from "@/lib/types";
 import type { SongToMatch } from "@/lib/matching";
 import { cacheMatches, getCachedMatches } from "@/lib/matchCache";
+import { fetchSharedMatches, resolveKnownMatch, saveMatchVotes } from "@/lib/sharedMatches";
 import { useConfirm } from "./ConfirmDialog";
 
 // A song going into the playlist. `match` is filled in already for songs added from Spotify.
@@ -20,6 +21,7 @@ type Row = {
   candidates: TrackMatch[]; // other possible tracks, for "Change"
   skipped: boolean;
   failed: boolean; // Spotify had errors, so this song was never properly checked (different from "not found")
+  sharedVotes?: number; // set when the match came from the shared match table: how many people confirmed it
 };
 
 type MatchResult = { key: string; match: TrackMatch | null; candidates: TrackMatch[]; failed: boolean };
@@ -107,11 +109,21 @@ export default function PlaylistBuilder({
     started.current = true;
 
     async function matchAll() {
-      const cache = getCachedMatches();
-      // Songs with a known track (from Spotify, or matched before) skip the search
+      const yours = getCachedMatches();
+      // Ask the shared match table only about songs that don't already have a track
+      const shared = await fetchSharedMatches(songs.filter((s) => !s.match && !yours[s.key]).map((s) => s.key));
+
+      // Songs with a known track skip the search: from Spotify, your own earlier choice, or a shared match
       const initial: Row[] = songs.map((song) => {
-        const known = song.match ?? cache[song.key];
-        return { song, match: known ?? null, candidates: known ? [known] : [], skipped: false, failed: false };
+        const known = resolveKnownMatch(song, yours, shared);
+        return {
+          song,
+          match: known?.match ?? null,
+          candidates: known ? [known.match] : [],
+          skipped: false,
+          failed: false,
+          sharedVotes: known?.source === "shared" ? known.votes : undefined,
+        };
       });
       const toSearch = initial.filter((r) => !r.match).map((r) => r.song);
       const results = await searchSongs(toSearch, initial.length - toSearch.length, initial.length);
@@ -167,7 +179,7 @@ export default function PlaylistBuilder({
   }
 
   function chooseTrack(key: string, track: TrackMatch) {
-    updateRow(key, { match: track, skipped: false });
+    updateRow(key, { match: track, skipped: false, sharedVotes: undefined }); // your own pick now, not the shared one
     setOpenKey(null);
   }
 
@@ -191,6 +203,13 @@ export default function PlaylistBuilder({
 
       // Remember these matches (including any you changed), so next time they're instant
       cacheMatches(Object.fromEntries(included.map((r) => [r.song.key, r.match!])));
+
+      // Count these matches as your votes in the shared match table (logged in only).
+      // Songs from custom lists came straight from Spotify (not matched), so they don't count.
+      // This runs in the background: if it fails, your playlist is still made.
+      saveMatchVotes(
+        included.filter((r) => !r.song.match).map((r) => ({ songKey: r.song.key, match: r.match! }))
+      ).catch((err) => console.warn("Couldn't save match votes.", err));
 
       onCreated({
         spotifyId: playlist.id,
@@ -373,6 +392,11 @@ function MatchRow(props: {
       <div style={{ minWidth: 0 }}>
         <div className="song-name">{row.song.name}</div>
         <div className="song-artist">{row.song.artist}</div>
+        {row.sharedVotes && row.match && (
+          <span className="pill pill-blue" style={{ marginTop: 4 }}>
+            Confirmed by {row.sharedVotes} people
+          </span>
+        )}
       </div>
 
       {/* Only matched songs show a track bubble; not-found rows are already marked by their red styling */}
