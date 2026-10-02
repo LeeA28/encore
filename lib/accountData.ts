@@ -1,26 +1,19 @@
 // Account mode: reading and saving a logged-in user's data in Supabase (Postgres).
 // Row Level Security in the database makes sure each user can only reach their own rows.
 
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Concert, CustomList, SavedPlaylist } from "./types";
+import type { Concert, CustomList, SavedPlaylist, Song } from "./types";
 import { emptyTiers, type Tiers } from "./tiers";
 import { tiersAreEmpty, type EncoreData } from "./guestData";
+import type { EncoreSupabase, Insert, Json, Row } from "./db";
 
 // ---- Converting between the app's shapes and database rows ----
+// The row types (Row<"concerts">, Insert<"concerts">...) come from lib/database.types.ts, which is
+// generated from the real database. If a column is renamed or removed, these functions stop compiling.
+//
+// JSON columns (songs, tiers, items) can hold any JSON, so the database types only know them as `Json`.
+// When reading, we tell TypeScript what shape our code stored there ("as unknown as Song[]").
 
-type ConcertRow = {
-  setlist_id: string;
-  date: string;
-  artist: string;
-  venue: string;
-  city: string;
-  country: string | null;
-  tour: string | null;
-  url: string;
-  songs: Concert["songs"];
-};
-
-function concertToRow(userId: string, c: Concert) {
+function concertToRow(userId: string, c: Concert): Insert<"concerts"> {
   return {
     user_id: userId,
     setlist_id: c.id,
@@ -31,11 +24,11 @@ function concertToRow(userId: string, c: Concert) {
     country: c.country ?? null, // the database uses null for "no value"; the app uses undefined
     tour: c.tour ?? null,
     url: c.url,
-    songs: c.songs,
+    songs: c.songs as unknown as Json,
   };
 }
 
-function rowToConcert(r: ConcertRow): Concert {
+function rowToConcert(r: Row<"concerts">): Concert {
   return {
     id: r.setlist_id,
     date: r.date,
@@ -45,31 +38,31 @@ function rowToConcert(r: ConcertRow): Concert {
     country: r.country ?? undefined,
     tour: r.tour ?? undefined,
     url: r.url,
-    songs: r.songs,
+    songs: r.songs as unknown as Song[],
   };
 }
 
-function listToRow(userId: string, l: CustomList) {
+function listToRow(userId: string, l: CustomList): Insert<"custom_lists"> {
   return {
     id: l.id,
     user_id: userId,
     name: l.name,
-    items: l.items,
-    tiers: l.tiers,
+    items: l.items as unknown as Json,
+    tiers: l.tiers as unknown as Json,
     updated_at: new Date().toISOString(),
   };
 }
 
-type PlaylistRow = {
-  spotify_id: string;
-  name: string;
-  url: string;
-  track_count: number;
-  source: string;
-  created_at: string;
-};
+function rowToList(r: Pick<Row<"custom_lists">, "id" | "name" | "items" | "tiers">): CustomList {
+  return {
+    id: r.id,
+    name: r.name,
+    items: r.items as unknown as CustomList["items"],
+    tiers: r.tiers as unknown as CustomList["tiers"],
+  };
+}
 
-function playlistToRow(userId: string, p: SavedPlaylist) {
+function playlistToRow(userId: string, p: SavedPlaylist): Insert<"playlists"> {
   return {
     user_id: userId,
     spotify_id: p.spotifyId,
@@ -81,7 +74,7 @@ function playlistToRow(userId: string, p: SavedPlaylist) {
   };
 }
 
-function rowToPlaylist(r: PlaylistRow): SavedPlaylist {
+function rowToPlaylist(r: Row<"playlists">): SavedPlaylist {
   return {
     spotifyId: r.spotify_id,
     name: r.name,
@@ -100,7 +93,7 @@ function check<T>(result: { data: T; error: { message: string } | null }): T {
 
 // ---- Reading ----
 
-export async function loadAccountData(supabase: SupabaseClient): Promise<EncoreData> {
+export async function loadAccountData(supabase: EncoreSupabase): Promise<EncoreData> {
   // Four requests at the same time (Promise.all), instead of one after another
   const [concertRows, tiersRow, listRows, playlistRows] = await Promise.all([
     supabase.from("concerts").select("*").order("added_at"),
@@ -109,17 +102,19 @@ export async function loadAccountData(supabase: SupabaseClient): Promise<EncoreD
     supabase.from("playlists").select("*").order("created_at", { ascending: false }), // newest first
   ]);
 
+  // No more "as ConcertRow[]": Supabase knows each table's row type, so the results are already typed
   return {
-    concerts: (check(concertRows) as ConcertRow[]).map(rowToConcert),
-    liveTiers: (check(tiersRow) as { tiers: Tiers } | null)?.tiers ?? emptyTiers(),
-    customLists: check(listRows) as CustomList[],
-    playlists: (check(playlistRows) as PlaylistRow[]).map(rowToPlaylist),
+    // "?? []": the types say a failed read could give null, so treat that as an empty list
+    concerts: (check(concertRows) ?? []).map(rowToConcert),
+    liveTiers: (check(tiersRow)?.tiers as unknown as Tiers | undefined) ?? emptyTiers(),
+    customLists: (check(listRows) ?? []).map(rowToList),
+    playlists: (check(playlistRows) ?? []).map(rowToPlaylist),
   };
 }
 
 // ---- Saving ----
 
-export async function saveConcerts(supabase: SupabaseClient, userId: string, concerts: Concert[]) {
+export async function saveConcerts(supabase: EncoreSupabase, userId: string, concerts: Concert[]) {
   if (concerts.length === 0) return;
   // upsert = insert, but if the row already exists, don't fail. ignoreDuplicates skips existing concerts.
   check(
@@ -129,25 +124,27 @@ export async function saveConcerts(supabase: SupabaseClient, userId: string, con
   );
 }
 
-export async function deleteConcert(supabase: SupabaseClient, userId: string, concertId: string) {
+export async function deleteConcert(supabase: EncoreSupabase, userId: string, concertId: string) {
   check(await supabase.from("concerts").delete().eq("user_id", userId).eq("setlist_id", concertId));
 }
 
-export async function saveLiveTiers(supabase: SupabaseClient, userId: string, tiers: Tiers) {
+export async function saveLiveTiers(supabase: EncoreSupabase, userId: string, tiers: Tiers) {
   check(
-    await supabase.from("live_tiers").upsert({ user_id: userId, tiers, updated_at: new Date().toISOString() })
+    await supabase
+      .from("live_tiers")
+      .upsert({ user_id: userId, tiers: tiers as unknown as Json, updated_at: new Date().toISOString() })
   );
 }
 
-export async function saveCustomList(supabase: SupabaseClient, userId: string, list: CustomList) {
+export async function saveCustomList(supabase: EncoreSupabase, userId: string, list: CustomList) {
   check(await supabase.from("custom_lists").upsert(listToRow(userId, list)));
 }
 
-export async function deleteCustomList(supabase: SupabaseClient, listId: string) {
+export async function deleteCustomList(supabase: EncoreSupabase, listId: string) {
   check(await supabase.from("custom_lists").delete().eq("id", listId));
 }
 
-export async function savePlaylists(supabase: SupabaseClient, userId: string, playlists: SavedPlaylist[]) {
+export async function savePlaylists(supabase: EncoreSupabase, userId: string, playlists: SavedPlaylist[]) {
   if (playlists.length === 0) return;
   check(
     await supabase
@@ -156,7 +153,7 @@ export async function savePlaylists(supabase: SupabaseClient, userId: string, pl
   );
 }
 
-export async function deletePlaylist(supabase: SupabaseClient, userId: string, spotifyId: string) {
+export async function deletePlaylist(supabase: EncoreSupabase, userId: string, spotifyId: string) {
   check(await supabase.from("playlists").delete().eq("user_id", userId).eq("spotify_id", spotifyId));
 }
 
@@ -166,7 +163,7 @@ export async function deletePlaylist(supabase: SupabaseClient, userId: string, s
 //  - live tiers: the browser's tiers are used only if the account has none yet
 //  - custom lists: added alongside the account's lists (same id = same list, so it's never added twice)
 export async function mergeGuestData(
-  supabase: SupabaseClient,
+  supabase: EncoreSupabase,
   userId: string,
   guest: EncoreData,
   account: EncoreData

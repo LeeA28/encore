@@ -1,7 +1,8 @@
 -- =====================================================================
--- Encore database setup
--- Paste this whole file into Supabase: SQL Editor -> New query -> Run.
--- It creates 3 tables and the security rules that protect them.
+-- Migration 1: Encore's original database setup (September 30, 2026).
+-- Creates the concerts, live_tiers, and custom_lists tables, and the
+-- Row Level Security rules that protect them.
+-- This was first run by hand in the SQL Editor (as schema.sql).
 -- =====================================================================
 
 
@@ -18,7 +19,6 @@ create table public.concerts (
   venue      text not null,
   city       text not null default '',
   country    text,
-  tour       text,
   url        text not null,               -- link to the setlist on setlist.fm
   songs      jsonb not null default '[]', -- [{ "name": "...", "coverOf": "..." }, ...]
   added_at   timestamptz not null default now(),
@@ -43,19 +43,6 @@ create table public.custom_lists (
   updated_at timestamptz not null default now()
 );
 
--- One row per playlist Encore created in a user's Spotify account.
-create table public.playlists (
-  id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  spotify_id  text not null,              -- Spotify's id for the playlist
-  name        text not null,
-  url         text not null,              -- opens the playlist in Spotify
-  track_count integer not null,
-  source      text not null,              -- what it was made from, e.g. "Songs heard live"
-  created_at  timestamptz not null default now(),
-  unique (user_id, spotify_id)            -- the same playlist is never recorded twice
-);
-
 -- "on delete cascade" above means: if a user account is deleted, their rows are deleted too.
 
 
@@ -68,7 +55,6 @@ create table public.playlists (
 alter table public.concerts enable row level security;
 alter table public.live_tiers enable row level security;
 alter table public.custom_lists enable row level security;
-alter table public.playlists enable row level security;
 
 -- concerts
 create policy "Read own concerts" on public.concerts
@@ -100,19 +86,8 @@ create policy "Update own lists" on public.custom_lists
 create policy "Delete own lists" on public.custom_lists
   for delete to authenticated using ((select auth.uid()) = user_id);
 
--- playlists
-create policy "Read own playlists" on public.playlists
-  for select to authenticated using ((select auth.uid()) = user_id);
-create policy "Add own playlists" on public.playlists
-  for insert to authenticated with check ((select auth.uid()) = user_id);
-create policy "Update own playlists" on public.playlists
-  for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
-create policy "Delete own playlists" on public.playlists
-  for delete to authenticated using ((select auth.uid()) = user_id);
-
 -- Allow logged-in users to use these tables at all (RLS above still limits them to their own rows).
 -- Logged-out visitors ("anon") get no access.
 grant select, insert, update, delete on public.concerts to authenticated;
 grant select, insert, update, delete on public.live_tiers to authenticated;
 grant select, insert, update, delete on public.custom_lists to authenticated;
-grant select, insert, update, delete on public.playlists to authenticated;

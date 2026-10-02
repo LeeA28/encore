@@ -1,8 +1,7 @@
 -- =====================================================================
--- Encore database update 2: tour names and saved playlists.
--- You already ran schema.sql, so run THIS file once (SQL Editor -> New query -> Run)
--- to add the new parts without touching your existing data.
--- (schema.sql has also been updated, for anyone setting up from scratch.)
+-- Migration 2: tour names and saved playlists (October 1, 2026).
+-- Adds the concerts.tour column and the playlists table (with its security rules).
+-- This was first run by hand in the SQL Editor (as update-002.sql).
 -- =====================================================================
 
 -- Tour names on concerts ("if not exists" makes this safe to run twice)

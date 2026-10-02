@@ -44,10 +44,9 @@ A complete walkthrough of how Encore works, step by step, so you can read throug
 ## Setting up Supabase (accounts)
 
 - Create a project at supabase.com, and save the database password somewhere safe
-- Create the tables: SQL Editor → New query → paste all of `supabase/schema.sql` → Run
-  - You should see "Success. No rows returned." The tables then appear under Table Editor
-  - Already ran an older `schema.sql`? Run `supabase/update-002.sql` instead: it adds tour names and the `playlists` table without touching your data
-  - Seeing `relation "concerts" already exists`? The setup already ran once. Check Table Editor before running anything again
+- Create the tables with migrations (see Step 21): `npx supabase login`, `npx supabase link --project-ref <your project ref>`, then `npm run db:push`
+  - For a brand new database, `db:push` runs every file in `supabase/migrations/` in order
+  - (Encore's first database was set up by pasting SQL into the SQL Editor, before migrations existed. Step 21 explains how that was brought in line)
 - Email confirmation (checks that emails are real): Authentication → Sign In / Providers → Email → "Confirm email"
   - Add `http://127.0.0.1:3000/**` under Authentication → URL Configuration → Redirect URLs. Supabase only sends people back to addresses on this list, which stops attackers from using your confirmation emails to redirect people elsewhere
   - The default email works as-is: its link confirms the email, then sends people to `/auth/callback`, which logs them in (in the same browser they signed up with)
@@ -143,6 +142,8 @@ lib/
   authErrors.ts              Turns Supabase's error codes into plain-language messages
   matching.ts                Pure: Spotify search queries and scoring for song matching
   matchCache.ts              Remembers matched tracks in the browser
+  database.types.ts          Generated from the database: every table and column's type (npm run db:types)
+  db.ts                      Short names for the database types: Row<"concerts">, Insert<...>, EncoreSupabase
 next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotify login)
 proxy.ts                     Runs before each page request: keeps the Supabase login fresh
 app/auth/confirm/route.ts    Where custom-template confirmation links land (for later, with custom SMTP)
@@ -151,11 +152,10 @@ app/api/spotify/match        Server: matches songs to Spotify tracks
 app/api/spotify/playlists    Server: creates a playlist and adds its tracks
 app/api/spotify/playlists/status   Server: which playlists are still in your Spotify library
 app/api/spotify/playlists/restore  Server: adds a deleted playlist back to your library
-supabase/schema.sql          The database tables and security rules (paste into Supabase's SQL editor)
+supabase/migrations/         The database's version history: one SQL file per change, applied in order
 lib/*.test.ts                Automated tests for the pure functions (npm test)
 vitest.config.mts            Test settings (including the time zone tests run in)
 .github/workflows/ci.yml     Runs lint, type check, and tests on GitHub for every push
-supabase/update-002.sql      Adds tour names and the playlists table to an existing database
 ```
 
 - A pattern to notice: `lib/` holds logic (no UI), `components/` holds UI (little logic), `app/` holds pages and routes
@@ -548,7 +548,7 @@ supabase/update-002.sql      Adds tour names and the playlists table to an exist
 - Guests still work exactly as before, saving in the browser
 - When a guest logs in, their browser data is moved into their account
 
-### The database (`supabase/schema.sql`)
+### The database (`supabase/migrations/`)
 
 - Three tables:
   - `concerts`: one row per concert a user added. Details are real columns (date, artist, venue, city, country, link); the song list is JSON
@@ -913,6 +913,46 @@ supabase/update-002.sql      Adds tour names and the playlists table to an exist
 
 ---
 
+## Step 21: Migrations and generated types
+
+### Migrations: version history for the database
+
+- Each change to the database's structure is one SQL file in `supabase/migrations/`, named with a timestamp so they sort in order:
+  - `20260930000000_initial_schema.sql`: the original tables and security rules (formerly `schema.sql`)
+  - `20261001000000_tour_and_playlists.sql`: tour names and the playlists table (formerly `update-002.sql`)
+- Supabase keeps a table recording which migrations each database has already run. `npm run db:push` runs only the new ones, in order
+- A brand new database (like a production one for launch) is built by running every migration from the start, so it ends up identical
+- The files are in Git, so each commit records what the database looked like at that point
+- Git tracks your code's history; migrations track your database structure's history (not the data in it)
+
+### Bringing an existing database in line
+
+- Your database already had both changes (pasted by hand), so running them again would fail with "already exists"
+- `npx supabase migration repair --status applied <timestamps>` tells Supabase "these already ran" without running them
+- `npx supabase migration list` shows each migration's status locally and on the database; both columns should match
+
+### The new workflow for database changes
+
+- `npm run db:new add_something`: creates an empty, timestamped migration file to write the SQL in
+- `npm run db:push`: applies it to the linked database
+- `npm run db:types`: regenerates `lib/database.types.ts` from the real database
+- Never edit a migration that has already been pushed; write a new one instead. Other databases may have already run the old version
+
+### Generated types (`lib/database.types.ts`)
+
+- The Supabase CLI reads the real database and writes a TypeScript description of every table and column: what you get back when reading (`Row`), and what you can send when adding (`Insert`) or changing (`Update`) a row
+- Both Supabase clients use it (`createBrowserClient<Database>`), and `lib/db.ts` adds short names: `Row<"concerts">`, `Insert<"concerts">`, and `EncoreSupabase`
+- What TypeScript now catches before anything runs (each was tested by introducing the typo on purpose):
+  - A misspelled table: `from("concert")` → "not assignable to `concerts | custom_lists | live_tiers | playlists`"
+  - A misspelled column when reading: `r.artst` → "Did you mean 'artist'?"
+  - A misspelled column when saving: `{ artst: ... }` → "Did you mean to write 'artist'?"
+- One limit: column names inside filters and sorting (like `.order("added_at")`) are plain strings, so a typo there isn't caught
+- JSON columns (`songs`, `tiers`, `items`) can hold any JSON, so the types only know them as `Json`. The code states their real shape when reading (`as unknown as Song[]`); that's the one place the types have to be trusted
+- The hand-written row types that used to be in `accountData.ts` are gone, so there's one source of truth: the database itself
+- `database.types.ts` is regenerated, never edited by hand, so the short names live in a separate file (`db.ts`) that survives regeneration
+
+---
+
 ## Things to test and play with
 
 - **Search**
@@ -1001,6 +1041,7 @@ supabase/update-002.sql      Adds tour names and the playlists table to an exist
 - **Drag and drop across multiple lists**: a temporary drag state that's only saved on drop, plus accessibility through keyboard sensors
 - **OAuth done securely**: the authorization code flow, CSRF protection with `state`, httpOnly cookies, and automatic token refresh
 - **Song matching with a scoring system**: multiple search strategies, a score for title, artist, and version, automatic thresholds, and a measured match rate
+- **Versioned database migrations and generated types**: a reproducible schema, and typos caught at compile time
 - **Automated tests and CI**: 42 tests on the core logic, regression tests for real bugs, and checks on every push
 - **Resilience to flaky APIs**: retries with exponential backoff, isolating failures per song, and separating "failed" from "not found"
 - **Race conditions in search-as-you-type**: debouncing plus cancelling stale requests with `AbortController`
