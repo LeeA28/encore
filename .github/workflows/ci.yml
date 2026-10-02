@@ -1,0 +1,32 @@
+# Continuous integration (CI): every push and pull request to GitHub runs these checks on a fresh
+# computer GitHub provides. The result shows as a green check or red X next to each commit.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest # a fresh Linux machine each time
+    steps:
+      # Download this repository's code onto the machine
+      - uses: actions/checkout@v5
+
+      # Install Node.js 22, and reuse downloaded packages between runs to save time
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # Install exactly the package versions in package-lock.json
+      - run: npm ci
+
+      # The same three checks you can run yourself
+      - name: Lint
+        run: npm run lint
+      - name: Type check
+        run: npm run typecheck
+      - name: Tests
+        run: npm test

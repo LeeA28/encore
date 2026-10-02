@@ -7,8 +7,11 @@ import Workspace, { type Tab } from "./Workspace";
 import AuthModal from "./AuthModal";
 import ThemeToggle from "./ThemeToggle";
 import { ConfirmProvider, useConfirm } from "./ConfirmDialog";
+import PasswordForm from "./PasswordForm";
+import HeaderMenu from "./HeaderMenu";
 import { LogoIcon } from "./Icons";
 
+// The tabs in the nav bar. "account" is opened from the Account button on the right instead.
 const TABS: Tab[] = ["concerts", "songs", "rank"];
 
 // The top-level component. ConfirmProvider wraps everything, so any component can open
@@ -29,8 +32,11 @@ function EncoreAppContent() {
   // Start on the tab named in the URL (e.g. "/?tab=rank" after returning from Spotify login)
   const [tab, setTab] = useState<Tab>(() => {
     const fromUrl = new URLSearchParams(window.location.search).get("tab");
-    return TABS.includes(fromUrl as Tab) ? (fromUrl as Tab) : "concerts";
+    return TABS.includes(fromUrl as Tab) || fromUrl === "account" ? (fromUrl as Tab) : "concerts";
   });
+
+  // Opened by a "reset your password" email link (?reset=1): asks for the new password
+  const [showReset, setShowReset] = useState(() => new URLSearchParams(window.location.search).get("reset") === "1");
 
   // ---- Encore account (Supabase) ----
   // undefined = still checking, null = logged out (guest), User = logged in
@@ -106,6 +112,15 @@ function EncoreAppContent() {
     setSpotifyConnected(false);
   }
 
+  const spotifyLoginHref = `/api/spotify/login?returnTo=${tab === "account" ? "concerts" : tab}`;
+
+  // The same tab buttons are used in both header layouts (only one is visible at a time)
+  const tabButtons = TABS.map((t) => (
+    <button key={t} className={`nav-link ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
+      {t}
+    </button>
+  ));
+
   return (
     <div className="container">
       <header className="site-header">
@@ -116,15 +131,9 @@ function EncoreAppContent() {
           <LogoIcon />
           Encore
         </a>
-        <nav className="nav">
-          {TABS.map((t) => (
-            <button key={t} className={`nav-link ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
-              {t}
-            </button>
-          ))}
-        </nav>
-
-        <div className="header-right">
+        {/* Wide screens: tabs and buttons all in one row */}
+        <nav className="nav nav-wide">{tabButtons}</nav>
+        <div className="header-right header-wide">
           <ThemeToggle />
           {spotifyConnected === true && (
             <button className="btn btn-spotify" onClick={disconnectSpotify} title="Click to disconnect">
@@ -133,16 +142,20 @@ function EncoreAppContent() {
           )}
           {spotifyConnected === false && (
             // A normal link (not fetch), because Spotify login needs a full page visit to Spotify's site
-            <a className="btn btn-outline" href={`/api/spotify/login?returnTo=${tab}`}>
+            <a className="btn btn-outline" href={spotifyLoginHref}>
               Connect Spotify
             </a>
           )}
-
           {user && (
             <>
-              <span className="user-email" title={user.email}>
-                {user.email}
-              </span>
+              {/* Opens the Account tab (your details and changing your password) */}
+              <button
+                className={`btn btn-outline ${tab === "account" ? "active-pill" : ""}`}
+                onClick={() => setTab("account")}
+                title={user.email}
+              >
+                Account
+              </button>
               <button className="btn btn-dark" onClick={logOut}>
                 Log out
               </button>
@@ -154,7 +167,25 @@ function EncoreAppContent() {
             </button>
           )}
         </div>
+
+        {/* Narrow screens (below 900px): dark mode and a ☰ menu in the top right */}
+        <div className="header-right header-compact">
+          <ThemeToggle />
+          <HeaderMenu
+            spotifyConnected={spotifyConnected}
+            spotifyLoginHref={spotifyLoginHref}
+            onDisconnectSpotify={disconnectSpotify}
+            loggedIn={user === undefined ? null : user !== null}
+            email={user?.email}
+            onAccount={() => setTab("account")}
+            onLogIn={() => setShowAuth(true)}
+            onLogOut={logOut}
+          />
+        </div>
       </header>
+
+      {/* Narrow screens: the tabs get their own full-width row under the logo */}
+      <nav className="nav-compact">{tabButtons}</nav>
 
       {banner && (
         <p className={banner.type === "error" ? "top-error" : "top-notice"}>
@@ -172,13 +203,35 @@ function EncoreAppContent() {
         <Workspace
           key={user?.id ?? "guest"}
           user={user}
-          tab={tab}
+          // The Account tab only exists when logged in (after logging out, show concerts instead)
+          tab={tab === "account" && !user ? "concerts" : tab}
           spotifyConnected={spotifyConnected}
           flushRef={flushRef}
         />
       )}
 
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
+
+      {/* After clicking a "reset your password" email link, you're logged in temporarily: set the new password */}
+      {showReset && user && (
+        <div className="modal-backdrop">
+          <div className="card modal" role="dialog" aria-modal="true">
+            <h2 className="card-title" style={{ fontSize: 26, marginBottom: 8 }}>
+              set a new password
+            </h2>
+            <p className="card-desc">Choose a new password for {user.email}.</p>
+            <PasswordForm
+              onDone={() => {
+                setShowReset(false);
+                setBanner({ type: "notice", text: "Your password has been updated." });
+              }}
+            />
+            <button className="link-button" onClick={() => setShowReset(false)}>
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
 
       <footer className="footer">
         Setlist data from{" "}

@@ -1,5 +1,5 @@
-// GET /auth/confirm?token_hash=...&type=email
-// The link in the "confirm your email" message points here. We ask Supabase to verify the token,
+// GET /auth/confirm?token_hash=...&type=email   (or type=recovery, for "reset your password" links)
+// Custom email template links point here (they work on any device). We ask Supabase to verify the token,
 // which also logs the user in (by setting their login cookies), then send them to the homepage.
 
 import { NextRequest, NextResponse } from "next/server";
@@ -15,9 +15,13 @@ export async function GET(request: NextRequest) {
   if (tokenHash && type) {
     const supabase = await createServerSupabase();
     const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
-    if (!error) return NextResponse.redirect(`${origin}/?confirmed=1`);
+    // type=recovery is a "reset your password" link: you're logged in now, so ask for the new password
+    if (!error) return NextResponse.redirect(`${origin}/${type === "recovery" ? "?reset=1" : "?confirmed=1"}`);
   }
 
-  const message = "That confirmation link is invalid or has expired. Try logging in to get a new one.";
+  const message =
+    type === "recovery"
+      ? "That reset link is invalid or has expired. Request a new one from Log in → Forgot password."
+      : "That confirmation link is invalid or has expired. Try logging in to get a new one.";
   return NextResponse.redirect(`${origin}/?authError=${encodeURIComponent(message)}`);
 }

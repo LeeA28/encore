@@ -60,3 +60,21 @@ export function MoonIcon({ size = 18 }: IconProps) {
     </svg>
   );
 }
+
+export function PersonIcon({ size = 26 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+    </svg>
+  );
+}
+
+export function MenuIcon({ size = 20 }: IconProps) {
+  // Three lines: the common "menu" symbol
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}

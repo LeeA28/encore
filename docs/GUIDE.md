@@ -109,8 +109,11 @@ components/
   TierBoard.tsx              The drag-and-drop S/A/B/C/D tier list (used by both modes)
   Workspace.tsx              Owns the user's data (via useEncoreData) and shows the current tab
   AuthModal.tsx              The log in / sign up pop-up (with resend confirmation email)
-  ThemeToggle.tsx            The sun/moon light/dark mode button
+  ThemeToggle.tsx            The sun/moon light/dark mode button (kept in sync across both header layouts)
+  HeaderMenu.tsx             The ☰ menu on narrow screens: Spotify, Account, Log in/out
   ConfirmDialog.tsx          Encore's "are you sure?" pop-up, used through useConfirm()
+  AccountTab.tsx             The Account tab: your details and changing your password
+  PasswordForm.tsx           "Set a new password" (typed twice), used by Account and reset links
   PlaylistList.tsx           "Your playlists": detects playlists deleted in Spotify, Restore and Remove
   PlaylistBuilder.tsx        Match songs to Spotify, review and fix matches, create the playlist
   TierPlaylistButton.tsx     Pick tiers from a tier list, then open the playlist builder
@@ -136,6 +139,8 @@ lib/
   supabase/server.ts         The Supabase client for server code (email confirmation)
   siteUrl.ts                 The real address to redirect back to (not the dev server's "localhost")
   emailDomains.ts            The list of email providers allowed for sign-up
+  passwordRules.ts           The minimum password length and the "typed twice" check
+  authErrors.ts              Turns Supabase's error codes into plain-language messages
   matching.ts                Pure: Spotify search queries and scoring for song matching
   matchCache.ts              Remembers matched tracks in the browser
 next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotify login)
@@ -147,6 +152,9 @@ app/api/spotify/playlists    Server: creates a playlist and adds its tracks
 app/api/spotify/playlists/status   Server: which playlists are still in your Spotify library
 app/api/spotify/playlists/restore  Server: adds a deleted playlist back to your library
 supabase/schema.sql          The database tables and security rules (paste into Supabase's SQL editor)
+lib/*.test.ts                Automated tests for the pure functions (npm test)
+vitest.config.mts            Test settings (including the time zone tests run in)
+.github/workflows/ci.yml     Runs lint, type check, and tests on GitHub for every push
 supabase/update-002.sql      Adds tour names and the playlists table to an existing database
 ```
 
@@ -784,6 +792,127 @@ supabase/update-002.sql      Adds tour names and the playlists table to an exist
 
 ---
 
+## Step 18: Forgot password and the Account tab
+
+### Forgot password
+
+- Log in pop-up → "Forgot password?" → enter your email → "Send reset link"
+- The message is the same whether or not an account exists ("If an account exists for..."). Saying "no account found" would let anyone check which emails have Encore accounts, a weakness called **account enumeration**
+- `supabase.auth.resetPasswordForEmail(email, { redirectTo })` emails a one-time link. Following it:
+  - Supabase checks the link, then sends you to `/auth/callback?next=reset&code=...`
+  - The callback trades the code for a temporary login (like email confirmation), then sends you to `/?reset=1`, which opens "set a new password"
+  - `?next=reset` is only accepted as that exact value, so the link can't be bent into redirecting people somewhere else (an "open redirect")
+- With the default email, the link only works in the same browser you requested it from (PKCE, from Step 15). The error message says so if someone opens it elsewhere
+- With custom SMTP (which you have), the "Reset password" template is editable. Changing its link to `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery` makes it work on any device; `/auth/confirm` now handles `type=recovery`
+
+### The Account tab (`components/AccountTab.tsx`)
+
+- The email in the header became an **Account** button, which opens the Account tab: your email, the date you joined, and **change password**
+- It only exists while logged in. Logging out while on it switches you to the concerts tab
+- Room to grow: more account info and stats can go here later
+
+### One password form for both (`components/PasswordForm.tsx`)
+
+- Changing your password and setting one from a reset link are the same action: `supabase.auth.updateUser({ password })` for whoever is logged in. So both use one component
+- Type it twice, checked in the browser first for instant feedback (`checkNewPassword` in `lib/passwordRules.ts`); Supabase checks again on its side
+- `autoComplete="new-password"` tells password managers this is a new password, so they offer to save it
+- Errors go through `friendlyAuthError` (now in `lib/authErrors.ts`, shared with the log in pop-up)
+
+### Requiring the current password (Account tab)
+
+- Changing your password from the Account tab asks for your **current password** first
+  - Why: without it, anyone with access to a logged-in browser (a shared computer, an unlocked laptop) could change your password and lock you out
+- It's **enforced by Supabase's server**, not just the page: with "Require current password when updating" turned on (Authentication → Sign In / Providers → Email), Supabase rejects any password change whose `current_password` is wrong
+  - A check that only happens in the page could be skipped by someone sending requests to Supabase directly. A server-side check can't be
+  - `updateUser({ password, current_password })` is supported in supabase-js v2.102.0 and newer
+- Reset links don't need it: tested with the setting on, the reset flow still works, since clicking the emailed link already proves it's you
+- Before building, this was tested first: the documentation didn't say whether reset links were exempt, so a 5-minute manual test answered it. Checking an unknown before writing code is a good habit
+- `autoComplete="current-password"` lets password managers fill in the saved password
+
+### Minimum password length
+
+- `MIN_PASSWORD_LENGTH` is 6, because that's the lowest Supabase's hosted service allows. A shorter rule in Encore would only lead to errors from Supabase
+- Supabase's own guidance recommends 8 or more, which you can set under Authentication → Providers → Email, and then change `MIN_PASSWORD_LENGTH` to match
+
+---
+
+## Step 19: Mobile pass
+
+### Two header layouts, chosen by width (not device)
+
+- CSS can't tell whether it's on a phone, only how wide the window is. So the switch happens at **900px**, roughly where the full header stops fitting:
+  - **900px and wider** (computers, sideways tablets): logo, tabs, and every button in one row
+  - **Narrower** (phones, upright tablets around 768–834px): the logo with dark mode and a **☰ menu** in the top right, and the tabs as a full-width bar underneath
+- Both layouts are in the page, and a `@media (max-width: 899px)` rule shows whichever fits. Rotating a tablet or resizing a window switches instantly, with nothing to reload
+- The switch point is based on the widest version of the header (logged in, with "Spotify connected," "Account," and "Log out")
+
+### The ☰ menu (`components/HeaderMenu.tsx`)
+
+- Holds Spotify (connect, or connected / disconnect), Account, and Log in or Log out, with your email at the top
+- Closes when you pick something, press Escape, or tap outside it
+  - "Outside" is detected with a `pointerdown` listener on the whole window and `.contains()`, which checks whether the tap landed inside the menu
+  - The listeners are only attached while the menu is open, and removed in the effect's cleanup
+- `aria-expanded` and `role="menu"` describe the menu to screen readers
+
+### Keeping two theme buttons in sync (`ThemeToggle.tsx`)
+
+- Each header layout has its own dark mode button. If each kept its own state, switching in one would leave the other showing the wrong icon
+- So both read the theme straight from `<html data-theme>`, using **`useSyncExternalStore`** (React's way of reading something outside React) with a **`MutationObserver`** (the browser's way of watching an element for changes)
+
+### Pinned playlist builder header
+
+- "make a playlist," Close (or Cancel), and the Create button stay at the top of the pop-up while the song list scrolls, using `position: sticky`
+- Sticky elements need a solid background (`--card-solid`) so the scrolling list doesn't show through
+
+### Long song names and phone-sized cards
+
+- Song cards are never wider than their tier (`max-width: min(280px, 100%)`)
+- Long names wrap onto a second line; beyond two lines, they end with "…" (`-webkit-line-clamp: 2`)
+- On phones, cards fill their tier, one per row
+- Search results and the "Change" panel wrap their buttons onto a new line instead of cutting them off
+
+### Touch target sizes
+
+- Apple recommends at least 44×44 points, Google 48×48, and the web accessibility standard (WCAG 2.2) sets 24×24 as its minimum and 44×44 as its higher level
+- On touch screens, buttons, tabs, and menu items are at least 44px tall
+- These use **`@media (pointer: coarse)`** ("is the main pointer a finger?") instead of screen width, since a sideways iPad is wide but still touch, and a narrow desktop window is narrow but still a mouse
+- The S/A/B/C/D buttons are 44px tall and share the card's width; on a phone that's about 36px each, since five of them have to fit side by side
+
+---
+
+## Step 20: Automated tests and continuous integration
+
+### Running the tests
+
+- `npm test` runs every test once. `npm run test:watch` keeps watching, and re-runs tests every time you save
+- `npm run typecheck` checks all the TypeScript, and `npm run lint` runs ESLint
+- Tests live next to the code they test: `lib/songs.ts` → `lib/songs.test.ts`
+
+### How a test reads
+
+- `describe("countSongs", ...)` groups related tests
+- `it("counts each song once per concert...", ...)` is one test, named after the behavior it checks, so a failure reads like a sentence
+- `expect(actual).toBe(expected)` fails the test if they don't match. `toEqual` compares the contents of arrays and objects; `toBeLessThan`, `toMatch`, and `toBeNull` check other kinds of conditions
+
+### What's tested, and why these
+
+- Only the **pure functions** in `lib/`: data in, data out, so no browser, Spotify, or database is needed. That's the payoff of keeping logic separate from UI and API calls
+- 42 tests across songs (counting, medleys, artist order), matching scores, title cleaning, setlist.fm conversion and dates, tier logic, and sign-up rules
+- **Regression tests** pin down bugs that were already found and fixed, so they can't quietly come back:
+  - Medleys counted as one unmatchable song
+  - March 14 showing as March 13 in Toronto's time zone
+  - `mgail.com` being accepted
+- **Proof the date test works**: with `formatDate` deliberately broken back to `new Date("2025-03-14")`, the test failed; with the fix restored, it passed. A test is only useful if it can fail
+- `vitest.config.mts` runs every test in Toronto's time zone, so date tests behave the same on every computer, including GitHub's servers (which use UTC)
+
+### Continuous integration (`.github/workflows/ci.yml`)
+
+- On every push, GitHub starts a fresh Linux machine, installs Node 22 and your packages (`npm ci`, which installs exactly the versions in `package-lock.json`), then runs lint, the type check, and the tests
+- The result appears as a green check or red X next to each commit, and on pull requests. If you break something, you find out within minutes, even if you forgot to run the tests yourself
+- See the runs under your repository's **Actions** tab
+
+---
+
 ## Things to test and play with
 
 - **Search**
@@ -839,7 +968,6 @@ supabase/update-002.sql      Adds tour names and the playlists table to an exist
 
 - Guest data lives in one browser only (and one address: `localhost` and `127.0.0.1` count as different sites). Accounts fix this
 - Supabase's built-in email sender is for testing only; connect a custom email provider before real users sign up
-- No "forgot password" flow yet
 - If the same account is open in two tabs, the last save wins (changes in one tab don't appear in the other until refresh)
 - Search needs an artist name. You can't search by venue or date alone
 - Playlists are always new (updating an existing playlist isn't supported yet), and always private
@@ -873,6 +1001,7 @@ supabase/update-002.sql      Adds tour names and the playlists table to an exist
 - **Drag and drop across multiple lists**: a temporary drag state that's only saved on drop, plus accessibility through keyboard sensors
 - **OAuth done securely**: the authorization code flow, CSRF protection with `state`, httpOnly cookies, and automatic token refresh
 - **Song matching with a scoring system**: multiple search strategies, a score for title, artist, and version, automatic thresholds, and a measured match rate
+- **Automated tests and CI**: 42 tests on the core logic, regression tests for real bugs, and checks on every push
 - **Resilience to flaky APIs**: retries with exponential backoff, isolating failures per song, and separating "failed" from "not found"
 - **Race conditions in search-as-you-type**: debouncing plus cancelling stale requests with `AbortController`
 - **Database security with Row Level Security**: why a public key is safe when Postgres enforces per-user access rules

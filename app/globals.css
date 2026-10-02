@@ -15,6 +15,7 @@
 
   /* Dark cards */
   --card: linear-gradient(165deg, #1e1e20 0%, #0f0f10 100%);
+  --card-solid: #19191b; /* a plain version of the card color, for pinned headers inside pop-ups */
   --card-text: #ffffff;
   --card-muted: #a1a1a6;
   --surface: #1f1f22; /* things sitting on a card: inputs, song chips */
@@ -81,6 +82,7 @@
   --text-muted: #9a9aa0;
 
   --card: linear-gradient(165deg, #1a1a1c 0%, #111113 100%);
+  --card-solid: #171719;
   --card-border: rgba(255, 255, 255, 0.05);
   --shadow-lg: 0 40px 80px -30px rgba(0, 0, 0, 0.65), 0 12px 24px -12px rgba(0, 0, 0, 0.45);
 
@@ -223,6 +225,11 @@ select {
   background: var(--outline-hover);
 }
 
+/* The Account button while its tab is open */
+.btn-outline.active-pill {
+  border-color: var(--text);
+}
+
 /* Round icon-only button (the sun/moon theme switch) */
 .icon-btn {
   width: 42px;
@@ -302,6 +309,113 @@ select {
 .tagline {
   color: var(--text-muted);
   margin: 12px 0 20px;
+}
+
+/* ---------- Two header layouts ----------
+   Wide screens (900px and up): logo, tabs, and every button in one row.
+   Narrow screens (phones, upright tablets): logo with dark mode and a ☰ menu, tabs on their own row.
+   Both are in the page; CSS shows whichever fits. 900px is roughly where the full header stops fitting. */
+
+.header-compact,
+.nav-compact {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  .nav-wide,
+  .header-wide {
+    display: none;
+  }
+
+  .header-compact {
+    display: flex;
+  }
+
+  /* The tabs as one full-width bar, each tab taking an equal share */
+  .nav-compact {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    margin-bottom: 8px;
+    background: var(--outline-bg);
+    border: 1px solid var(--outline-border);
+    border-radius: var(--radius-pill);
+  }
+
+  .nav-compact .nav-link {
+    flex: 1;
+    min-height: 44px;
+    border-radius: var(--radius-pill);
+  }
+
+  .nav-compact .nav-link.active {
+    background: var(--strong-bg);
+    color: var(--strong-text);
+  }
+}
+
+/* ---------- The ☰ menu ---------- */
+
+.menu-wrap {
+  position: relative; /* the panel is positioned relative to this */
+}
+
+.menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px); /* just below the button */
+  min-width: 270px;
+  white-space: nowrap;
+  background: var(--card-solid);
+  color: var(--card-text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  z-index: 50; /* above the page, below pop-ups */
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-label {
+  padding: 10px 12px 6px;
+  font-size: 13px;
+  color: var(--card-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--card-text);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: var(--surface-hover);
+}
+
+.menu-hint {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--card-muted);
+}
+
+.dot-green {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--spotify-green);
 }
 
 /* ---------- Cards ---------- */
@@ -420,6 +534,22 @@ select {
 .btn-small {
   padding: 6px 14px;
   font-size: 14px;
+}
+
+/* A button that looks like a small text link (e.g. "Forgot password?") */
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 12px;
+  color: var(--card-muted);
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.link-button:hover {
+  color: var(--card-text);
 }
 
 .link-subtle {
@@ -707,17 +837,21 @@ details ol {
   border-radius: 12px;
   padding: 8px 12px;
   color: var(--card-text);
-  max-width: 260px;
+  max-width: min(280px, 100%); /* never wider than its tier */
   box-shadow: 0 4px 10px -6px rgba(0, 0, 0, 0.6);
   user-select: none;
 }
 
+/* Long names wrap onto a second line; anything longer than 2 lines ends with "…" */
 .song-chip-name {
   font-size: 14px;
   font-weight: 500;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 .song-chip-meta {
@@ -817,12 +951,42 @@ details ol {
   flex-shrink: 0;
 }
 
+/* Long names and buttons wrap onto a new line instead of being cut off */
+.result-row {
+  flex-wrap: wrap;
+}
+
+.result-row .song-info {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
 /* ---------- Playlist builder ---------- */
 
 .modal.wide {
   max-width: 760px;
   max-height: 88vh;
   overflow-y: auto; /* long song lists scroll inside the pop-up */
+  padding: 0; /* the pinned header and the body each have their own padding */
+}
+
+/* The playlist builder's header: "sticky" scrolls with the list until it reaches the top
+   of the pop-up, then stays pinned there. It needs a solid background so the list doesn't show through. */
+.modal-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--card-solid);
+  border-bottom: 1px solid var(--border);
+  padding: 24px 32px 16px;
+}
+
+.modal-body {
+  padding: 16px 32px 32px;
+}
+
+.sticky-create {
+  margin-top: 12px;
 }
 
 .match-row {
@@ -950,15 +1114,6 @@ details ol {
 /* ---------- Phones ---------- */
 
 @media (max-width: 640px) {
-  .site-header {
-    flex-wrap: wrap;
-    gap: 12px 20px;
-  }
-
-  .nav {
-    order: 3; /* on phones: logo and Spotify button on the first line, tabs below */
-    width: 100%;
-  }
 
   .card {
     padding: 22px;
@@ -977,5 +1132,62 @@ details ol {
     width: 44px;
     height: 44px;
     font-size: 20px;
+  }
+
+  /* On phones, song cards fill their tier, one per row, which gives the tier buttons room */
+  .tier-drop .song-chip {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+
+  .modal-sticky {
+    padding: 18px 20px 12px;
+  }
+
+  .modal-sticky .card-title {
+    font-size: 22px !important; /* fits "make a playlist" on one line next to Close */
+  }
+
+  .modal-body {
+    padding: 12px 20px 24px;
+  }
+
+  .modal.wide {
+    max-height: 92vh;
+  }
+}
+
+/* ---------- Touch screens ----------
+   "pointer: coarse" means the main pointer is a finger, not a mouse. Apple recommends tap targets of at
+   least 44×44 points (Google: 48×48), and the web accessibility standard WCAG 2.2 sets 44×44 as its higher
+   level. These rules apply on any touch screen (phone or tablet), whatever its width. */
+@media (pointer: coarse) {
+  .btn-small,
+  .segmented button,
+  .remove-btn,
+  .link-button {
+    min-height: 44px;
+  }
+
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .nav-link {
+    min-height: 44px;
+  }
+
+  .chip-actions {
+    gap: 6px;
+  }
+
+  /* The S/A/B/C/D buttons: 44px tall, sharing the card's width equally */
+  .tier-btn,
+  .remove-btn {
+    flex: 1;
+    height: 44px;
+    min-width: 36px;
+    font-size: 14px;
   }
 }

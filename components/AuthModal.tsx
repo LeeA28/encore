@@ -1,29 +1,15 @@
 "use client";
 
-// The log in / sign up pop-up (email and password, handled by Supabase Auth)
+// The log in / sign up / forgot password pop-up (email and password, handled by Supabase Auth)
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { emailDomain, isAllowedEmail } from "@/lib/emailDomains";
-
-// Supabase's error messages are written for developers; these are the ones users are likely to see
-function friendlyError(err: unknown): string {
-  const code = (err as { code?: string })?.code ?? "";
-  const message = err instanceof Error ? err.message : "";
-  if (code === "over_email_send_rate_limit" || /email rate limit/i.test(message)) {
-    return "Too many sign-up emails have been sent recently. Please try again in a little while.";
-  }
-  if (code === "over_request_rate_limit" || /rate limit/i.test(message)) {
-    return "Too many attempts in a short time. Please wait a minute and try again.";
-  }
-  if (code === "invalid_credentials") return "That email and password don't match. Check them and try again.";
-  if (code === "user_already_exists") return "There's already an account with this email. Try logging in instead.";
-  if (code === "weak_password") return "Please choose a stronger password (at least 6 characters).";
-  return message || "Something went wrong. Please try again.";
-}
+import { friendlyAuthError as friendlyError } from "@/lib/authErrors";
+import { MIN_PASSWORD_LENGTH } from "@/lib/passwordRules";
 
 export default function AuthModal({ onClose }: { onClose: () => void }) {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -49,7 +35,17 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
 
     try {
       const supabase = createClient();
-      if (mode === "login") {
+      if (mode === "forgot") {
+        // Emails a one-time link. It goes through Supabase, then back to /auth/callback,
+        // which logs you in temporarily and opens the "set a new password" pop-up.
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth/callback?next=reset`,
+        });
+        if (error) throw error;
+        // Same message whether or not the account exists, so this can't be used to find out
+        // which emails have Encore accounts (called "account enumeration")
+        setMessage(`If an account exists for ${email}, we've sent a link to reset your password. Check your inbox (and spam).`);
+      } else if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error?.code === "email_not_confirmed") {
           setNeedsConfirm(true);
@@ -80,6 +76,14 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // Switching between log in, sign up, and forgot password clears old messages
+  function switchMode(next: "login" | "signup" | "forgot") {
+    setMode(next);
+    setError("");
+    setMessage("");
+    setNeedsConfirm(false);
+  }
+
   async function resendConfirmation() {
     setError("");
     const { error } = await createClient().auth.resend({
@@ -96,22 +100,30 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
     <div className="modal-backdrop" onClick={onClose}>
       {/* ...but clicks inside the pop-up are stopped here, so they don't reach the background */}
       <div className="card modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="segmented">
-          <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>
-            Log in
+        {mode === "forgot" ? (
+          <button className="btn btn-ghost btn-small" style={{ marginBottom: 16 }} onClick={() => switchMode("login")}>
+            ← Back to log in
           </button>
-          <button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>
-            Sign up
-          </button>
-        </div>
+        ) : (
+          <div className="segmented">
+            <button className={mode === "login" ? "active" : ""} onClick={() => switchMode("login")}>
+              Log in
+            </button>
+            <button className={mode === "signup" ? "active" : ""} onClick={() => switchMode("signup")}>
+              Sign up
+            </button>
+          </div>
+        )}
 
         <h2 className="card-title" style={{ fontSize: 26, marginBottom: 8 }}>
-          {mode === "login" ? "welcome back" : "create an account"}
+          {mode === "login" ? "welcome back" : mode === "signup" ? "create an account" : "reset your password"}
         </h2>
         <p className="card-desc">
           {mode === "login"
             ? "Log in to see your concerts, tiers, and lists on any device."
-            : "Anything saved in this browser will be moved into your new account."}
+            : mode === "signup"
+              ? "Anything saved in this browser will be moved into your new account."
+              : "Enter your account's email, and we'll send you a link to set a new password."}
         </p>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -124,20 +136,34 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
             placeholder="Email"
             required
           />
-          <input
-            className="input"
-            type="password"
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={mode === "signup" ? "Password (at least 6 characters)" : "Password"}
-            minLength={6}
-            required
-          />
+          {mode !== "forgot" && (
+            <input
+              className="input"
+              type="password"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={mode === "signup" ? `Password (at least ${MIN_PASSWORD_LENGTH} characters)` : "Password"}
+              minLength={mode === "signup" ? MIN_PASSWORD_LENGTH : undefined}
+              required
+            />
+          )}
           <button className="btn btn-light" type="submit" disabled={busy} style={{ justifyContent: "center" }}>
-            {busy ? "One moment..." : mode === "login" ? "Log in" : "Create account"}
+            {busy
+              ? "One moment..."
+              : mode === "login"
+                ? "Log in"
+                : mode === "signup"
+                  ? "Create account"
+                  : "Send reset link"}
           </button>
         </form>
+
+        {mode === "login" && (
+          <button className="link-button" onClick={() => switchMode("forgot")}>
+            Forgot password?
+          </button>
+        )}
 
         {error && <p className="error">{error}</p>}
         {needsConfirm && (

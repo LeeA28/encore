@@ -11,8 +11,9 @@ import { useEncoreData } from "@/lib/useEncoreData";
 import ConcertSearch from "./ConcertSearch";
 import SongList from "./SongList";
 import RankTab from "./RankTab";
+import AccountTab from "./AccountTab";
 
-export type Tab = "concerts" | "songs" | "rank";
+export type Tab = "concerts" | "songs" | "rank" | "account";
 
 type Props = {
   user: User | null;
@@ -70,6 +71,7 @@ export default function Workspace({ user, tab, spotifyConnected, flushRef }: Pro
         />
       )}
       {tab === "rank" && <RankTab songs={songs} data={data} spotifyConnected={spotifyConnected} />}
+      {tab === "account" && user && <AccountTab user={user} />}
     </main>
   );
 }

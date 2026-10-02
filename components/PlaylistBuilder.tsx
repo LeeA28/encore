@@ -264,11 +264,7 @@ export default function PlaylistBuilder({
 
         <div className="form-row" style={{ marginBottom: 12 }}>
           <input className="input grow" value={name} onChange={(e) => setName(e.target.value)} placeholder="Playlist name" />
-          <button className="btn btn-spotify" onClick={create} disabled={phase === "creating" || included.length === 0}>
-            {phase === "creating" ? "Creating..." : `Create playlist (${included.length})`}
-          </button>
         </div>
-        {error && <p className="error">{error}</p>}
 
         {/* Songs that need attention come first: not found (red), then couldn't check (amber) */}
         {notFound.length > 0 && (
@@ -327,20 +323,37 @@ export default function PlaylistBuilder({
     // click by accident while waiting, and it would throw away the matching. Use Cancel/Close instead.
     <div className="modal-backdrop">
       <div className="card modal wide" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="card-header" style={{ justifyContent: "space-between" }}>
-          <h2 className="card-title" style={{ fontSize: 26 }}>
-            make a playlist
-          </h2>
-          {phase !== "creating" && (
-            <button className="btn btn-ghost btn-small" onClick={close}>
-              {spotifyConnected && phase === "matching" ? "Cancel" : "Close"}
+        {/* Pinned to the top of the pop-up while the song list scrolls (CSS position: sticky),
+            so Close and Create are always reachable, even at the bottom of a long list */}
+        <div className="modal-sticky">
+          <div className="card-header" style={{ justifyContent: "space-between", marginBottom: 0 }}>
+            <h2 className="card-title" style={{ fontSize: 26 }}>
+              make a playlist
+            </h2>
+            {phase !== "creating" && (
+              <button className="btn btn-ghost btn-small" onClick={close}>
+                {spotifyConnected && phase === "matching" ? "Cancel" : "Close"}
+              </button>
+            )}
+          </div>
+          {spotifyConnected && (phase === "review" || phase === "creating") && (
+            <button
+              className="btn btn-spotify sticky-create"
+              onClick={create}
+              disabled={phase === "creating" || included.length === 0}
+            >
+              {phase === "creating" ? "Creating..." : `Create playlist (${included.length})`}
             </button>
           )}
+          {error && <p className="error" style={{ marginBottom: 0 }}>{error}</p>}
         </div>
-        <p className="muted" style={{ marginBottom: 12 }}>
-          From: {source}
-        </p>
-        {content}
+
+        <div className="modal-body">
+          <p className="muted" style={{ marginBottom: 12 }}>
+            From: {source}
+          </p>
+          {content}
+        </div>
       </div>
     </div>
   );

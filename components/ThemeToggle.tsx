@@ -2,25 +2,35 @@
 
 // The sun/moon button that switches between light and dark mode.
 // The current theme lives on <html data-theme="...">, which the CSS variables in globals.css react to.
+//
+// The header has two layouts (wide and narrow), each with its own copy of this button. So instead of
+// each copy keeping its own state, both read the theme straight from <html> and watch it for changes
+// (useSyncExternalStore + MutationObserver). Switching in one copy updates the other too.
 
-import { useState } from "react";
+import { useSyncExternalStore } from "react";
 import { MoonIcon, SunIcon } from "./Icons";
 
 type Theme = "light" | "dark";
 
-export default function ThemeToggle() {
-  // The script in layout.tsx already set the theme before the page appeared, so just read it
-  const [theme, setTheme] = useState<Theme>(() =>
-    document.documentElement.dataset.theme === "dark" ? "dark" : "light"
-  );
+const readTheme = (): Theme => (document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 
-  function applyTheme(next: Theme) {
-    document.documentElement.dataset.theme = next; // every CSS variable switches to the other set
-    try {
-      localStorage.setItem("encore:theme", next); // remembered for next time
-    } catch {}
-    setTheme(next);
-  }
+// Calls `onChange` whenever <html>'s data-theme attribute changes; returns a function to stop watching
+function subscribe(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  return () => observer.disconnect();
+}
+
+function applyTheme(next: Theme) {
+  document.documentElement.dataset.theme = next; // every CSS variable switches to the other set
+  try {
+    localStorage.setItem("encore:theme", next); // remembered for next time
+  } catch {}
+}
+
+export default function ThemeToggle() {
+  // The third argument is what the server would see; the app only renders in the browser, but React asks for it
+  const theme = useSyncExternalStore(subscribe, readTheme, () => "light" as Theme);
 
   function toggle() {
     const next: Theme = theme === "dark" ? "light" : "dark";
