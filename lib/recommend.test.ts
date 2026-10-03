@@ -1,7 +1,16 @@
 // Tests for artist recommendations (lib/recommend.ts), including the worked example from the guide
 
 import { describe, expect, it } from "vitest";
-import { buildTasteProfile, membersToExclude, pickSeeds, reasonFor, scoreCandidates } from "./recommend";
+import {
+  buildTasteProfile,
+  canonicalName,
+  diversify,
+  pickSeeds,
+  reasonFor,
+  scoreCandidates,
+  splitCollaboration,
+  toExclusions,
+} from "./recommend";
 import { emptyTiers } from "./tiers";
 import { songKey } from "./songs";
 import type { Concert, SongCount } from "./types";
@@ -106,12 +115,7 @@ describe("skipping members of your top bands", () => {
       { name: "Candidate A", match: 0.8 },
     ],
   };
-  const exclude = membersToExclude({
-    "5SOS": [
-      { id: "luke-id", name: "Luke Hemmings" },
-      { id: "calum-id", name: "Calum Hood" },
-    ],
-  });
+  const exclude = toExclusions(["luke-id", "calum-id"], ["Luke Hemmings", "Calum Hood"]);
 
   it("leaves out a band's members, matching by MusicBrainz ID or by name", () => {
     const recs = scoreCandidates(exampleProfile(), similar, 10, exclude);
@@ -122,6 +126,59 @@ describe("skipping members of your top bands", () => {
     // Exclusions only come from your top artists' band members, so a band itself is never excluded
     const recs = scoreCandidates(exampleProfile(), { "Bruno Mars": [{ name: "Some Band", match: 0.9 }] }, 10, exclude);
     expect(recs.map((r) => r.artist)).toEqual(["Some Band"]);
+  });
+});
+
+describe("collaborations and duplicates", () => {
+  it("splits collaboration credits into their artists", () => {
+    expect(splitCollaboration("Bruno Mars, Anderson .Paak & Silk Sonic")).toEqual([
+      "Bruno Mars",
+      "Anderson .Paak",
+      "Silk Sonic",
+    ]);
+    expect(splitCollaboration("Charlie Puth")).toEqual(["Charlie Puth"]);
+    expect(splitCollaboration("The xx")).toEqual(["The xx"]); // "x" only splits as its own word
+  });
+
+  it("treats spellings that differ by '&' vs 'and' or punctuation as the same name", () => {
+    expect(canonicalName("Bruno Mars, Anderson .Paak & Silk Sonic")).toBe(
+      canonicalName("Bruno Mars, Anderson Paak and Silk Sonic")
+    );
+  });
+
+  // Regression test: both spellings of this collaboration were recommended to a Bruno Mars fan
+  it("skips collaborations that include an artist you already know", () => {
+    const recs = scoreCandidates(exampleProfile(), {
+      "5SOS": [
+        { name: "Bruno Mars, Anderson .Paak, Silk Sonic", match: 0.9 },
+        { name: "Bruno Mars, Anderson .Paak & Silk Sonic", match: 0.9 },
+        { name: "Charlie Puth", match: 0.5 },
+      ],
+    });
+    expect(recs.map((r) => r.artist)).toEqual(["Charlie Puth"]);
+  });
+
+  it("merges two spellings of the same new artist into one recommendation", () => {
+    const recs = scoreCandidates(exampleProfile(), {
+      "5SOS": [{ name: "Simon & Garfunkel", match: 0.5 }],
+      "Bruno Mars": [{ name: "Simon and Garfunkel", match: 0.5 }],
+    });
+    expect(recs).toHaveLength(1);
+  });
+});
+
+describe("diversify", () => {
+  it("keeps a band and drops its members when both are recommended", () => {
+    const rec = (artist: string, mbid: string) => ({
+      artist,
+      mbid,
+      score: 1,
+      contribution: 1,
+      because: { artist: "5SOS", score: 1, tierCounts: { S: 0, A: 0, B: 0, C: 0, D: 0 }, concerts: 1 },
+    });
+    const recs = [rec("One Direction", "1d"), rec("Louis Tomlinson", "louis"), rec("Waterparks", "wp")];
+    const result = diversify(recs, { louis: ["1d"] });
+    expect(result.map((r) => r.artist)).toEqual(["One Direction", "Waterparks"]);
   });
 });
 

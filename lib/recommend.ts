@@ -24,19 +24,40 @@ export type TasteProfile = Map<string, ArtistTaste>; // keyed by normalized arti
 
 export type SimilarArtist = { name: string; match: number; mbid?: string }; // match: similarity from 0 to 1
 
-// Artists to leave out of recommendations: members of your top bands (whose solo music you likely know)
+// Artists to leave out of recommendations: members of your top bands and their other performing names
+// (whose solo music you likely know). Matched by MusicBrainz ID (reliable, since some members release
+// music under a different name) or by name (the fallback when an artist has no ID).
 export type Exclusions = { ids: Set<string>; names: Set<string> };
 
-// Pure: turns each top band's member list into a quick lookup by MusicBrainz ID and by name.
-// IDs are the reliable way to match (some members release music under a different name),
-// and names are the fallback when an artist has no ID.
-export function membersToExclude(members: Record<string, { id: string; name: string }[]>): Exclusions {
-  const all = Object.values(members).flat();
-  return { ids: new Set(all.map((m) => m.id)), names: new Set(all.map((m) => normalize(m.name))) };
+export const NO_EXCLUSIONS: Exclusions = { ids: new Set(), names: new Set() };
+
+// Pure: builds the lookup from plain lists (the shape the server sends)
+export function toExclusions(ids: string[], names: string[]): Exclusions {
+  return { ids: new Set(ids), names: new Set(names.map(normalize)) };
+}
+
+// Pure: a stricter name comparison for spotting duplicates: "&" and "and" are the same,
+// and punctuation is ignored ("Anderson .Paak & Silk Sonic" = "Anderson Paak and Silk Sonic")
+export function canonicalName(name: string): string {
+  return normalize(name)
+    .replace(/&/g, " and ")
+    .replace(/[^\p{L}\p{N} ]/gu, "") // keep only letters, numbers, and spaces (any language)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Pure: the separate artists in a collaboration credit, like "Bruno Mars, Anderson .Paak & Silk Sonic"
+// → ["Bruno Mars", "Anderson .Paak", "Silk Sonic"]. A normal name comes back as just itself.
+export function splitCollaboration(name: string): string[] {
+  return name
+    .split(/\s*(?:,|&|\+|\bfeat\.?|\bft\.?|\bwith\b|\bx\b|\band\b)\s*/i)
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
 }
 
 export type Recommendation = {
   artist: string;
+  mbid?: string; // MusicBrainz ID, when known (used to keep a band over its members)
   score: number;
   because: ArtistTaste; // the artist of yours that contributed the most
   contribution: number; // how many points that artist contributed
@@ -103,21 +124,26 @@ export function scoreCandidates(
   profile: TasteProfile,
   similarBySeed: Record<string, SimilarArtist[]>, // keyed by the seed's display name
   limit = 10,
-  exclude: Exclusions = { ids: new Set(), names: new Set() }
+  exclude: Exclusions = NO_EXCLUSIONS
 ): Recommendation[] {
+  // True for an artist you already know, or a member of one of your top bands
+  const isKnown = (name: string) => profile.has(normalize(name)) || exclude.names.has(normalize(name));
   const candidates = new Map<string, Recommendation>();
 
   for (const [seedName, similar] of Object.entries(similarBySeed)) {
     const seed = profile.get(normalize(seedName));
     if (!seed) continue;
     for (const { name, match, mbid } of similar) {
-      const key = normalize(name);
-      if (profile.has(key)) continue; // you've already seen or ranked this artist
-      // A member of one of your top bands (e.g. a 5SOS member's solo music): not much of a discovery.
-      // (The other way around is allowed: if a top artist is a solo artist from a band, the band can be suggested.)
-      if ((mbid && exclude.ids.has(mbid)) || exclude.names.has(key)) continue;
+      // Skip: an artist you already know, or a member of one of your top bands (e.g. a 5SOS member's
+      // solo music). The other way around is allowed: a solo top artist's band can be suggested.
+      if (isKnown(name) || (mbid && exclude.ids.has(mbid))) continue;
+      // Skip collaboration credits that include someone you already know
+      // ("Bruno Mars, Anderson .Paak & Silk Sonic" when you've seen Bruno Mars)
+      if (splitCollaboration(name).some(isKnown)) continue;
+      // Two spellings of the same name count as one candidate
+      const key = canonicalName(name);
       const points = seed.score * match;
-      const entry = candidates.get(key) ?? { artist: name, score: 0, because: seed, contribution: 0 };
+      const entry = candidates.get(key) ?? { artist: name, mbid, score: 0, because: seed, contribution: 0 };
       entry.score += points;
       // Remember which of your artists contributed the most, for the "Because..." reason
       if (points > entry.contribution) {
@@ -129,6 +155,14 @@ export function scoreCandidates(
   }
 
   return [...candidates.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+// Pure: for variety, when a band and its own members are both recommended, keep only the band.
+// memberOf: for each candidate's MusicBrainz ID, the IDs of bands they're a member of.
+// (Recommender systems call this "diversity": not filling the list with near-identical picks.)
+export function diversify(recs: Recommendation[], memberOf: Record<string, string[]>): Recommendation[] {
+  const recommendedIds = new Set(recs.map((r) => r.mbid).filter(Boolean));
+  return recs.filter((r) => !(r.mbid && (memberOf[r.mbid] ?? []).some((band) => recommendedIds.has(band))));
 }
 
 // A short, human reason for a recommendation, based on your strongest signal for that artist

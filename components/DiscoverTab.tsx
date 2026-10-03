@@ -8,7 +8,8 @@ import type { SongCount } from "@/lib/types";
 import type { EncoreDataApi } from "@/lib/useEncoreData";
 import {
   buildTasteProfile,
-  membersToExclude,
+  diversify,
+  toExclusions,
   pickSeeds,
   reasonFor,
   scoreCandidates,
@@ -35,7 +36,12 @@ export default function DiscoverTab({ songs, data }: Props) {
   const seedNames = seeds.map((s) => s.artist).join("|"); // a simple value the effect below can watch
 
   const [similar, setSimilar] = useState<Record<string, SimilarArtist[]> | null>(null);
-  const [members, setMembers] = useState<Record<string, { id: string; name: string }[]>>({});
+  // From MusicBrainz (slower, so it arrives after the first list): band members to skip,
+  // and which bands each candidate belongs to
+  const [bands, setBands] = useState<{
+    exclude: { ids: string[]; names: string[] };
+    memberOf: Record<string, string[]>;
+  } | null>(null);
   const [error, setError] = useState("");
 
   // Look up similar artists for your top artists
@@ -50,9 +56,7 @@ export default function DiscoverTab({ songs, data }: Props) {
       .then(async (res) => {
         const body = await res.json();
         if (!res.ok) throw new Error(body.error);
-        if (cancelled) return;
-        setSimilar(body.similar);
-        setMembers(body.members ?? {});
+        if (!cancelled) setSimilar(body.similar);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Couldn't load recommendations.");
@@ -62,12 +66,51 @@ export default function DiscoverTab({ songs, data }: Props) {
     };
   }, [seedNames]);
 
-  // Step 3: score the similar artists
-  const recommendations: Recommendation[] = useMemo(
-    // Members of your top bands are skipped (their solo music isn't much of a discovery)
-    () => (similar ? scoreCandidates(profile, similar, 10, membersToExclude(members)) : []),
-    [profile, similar, members]
+  // Step 3: score the similar artists. A longer list (25) is kept, so there's room left after filtering.
+  // Members of your top bands are skipped; when a band and its members are both here, the band stays.
+  const candidates: Recommendation[] = useMemo(() => {
+    if (!similar) return [];
+    const exclude = bands ? toExclusions(bands.exclude.ids, bands.exclude.names) : undefined;
+    return scoreCandidates(profile, similar, 25, exclude);
+  }, [profile, similar, bands]);
+
+  const recommendations = useMemo(
+    () => (bands ? diversify(candidates, bands.memberOf) : candidates).slice(0, 10),
+    [candidates, bands]
   );
+
+  // Once the first list is showing, check band memberships (slow the first time, cached after).
+  // The candidates sent are scored WITHOUT the band filter, so receiving the results doesn't
+  // change this list and trigger the check all over again.
+  const candidateList = useMemo(
+    () =>
+      similar
+        ? JSON.stringify(scoreCandidates(profile, similar, 15).map((c) => ({ name: c.artist, mbid: c.mbid })))
+        : "",
+    [profile, similar]
+  );
+  const [checkingBands, setCheckingBands] = useState(false);
+  useEffect(() => {
+    if (!candidateList || !seedNames) return;
+    let cancelled = false;
+    Promise.resolve().then(() => !cancelled && setCheckingBands(true));
+    fetch("/api/recommendations/bands", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ artists: seedNames.split("|"), candidates: JSON.parse(candidateList) }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        if (!cancelled && body) setBands(body);
+      })
+      .catch(() => {}) // without member info, recommendations still work
+      .finally(() => {
+        if (!cancelled) setCheckingBands(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [candidateList, seedNames]);
 
   return (
     <section className="card">
@@ -98,6 +141,11 @@ export default function DiscoverTab({ songs, data }: Props) {
 
           {error && <p className="error">{error}</p>}
           {!similar && !error && <p className="notice">Finding artists for you...</p>}
+          {checkingBands && (
+            <p className="notice" style={{ fontSize: 13 }}>
+              Checking band members (this can take a little while the first time)...
+            </p>
+          )}
           {similar && recommendations.length === 0 && (
             <p className="notice">No recommendations yet. Try ranking more songs in the rank tab.</p>
           )}

@@ -145,7 +145,8 @@ lib/
   matching.ts                Pure: Spotify search queries and scoring for song matching
   matchCache.ts              Remembers matched tracks in the browser
   recommend.ts               Pure: taste profile, candidate scoring, reasons, and skipping band members
-  musicbrainz.ts             Server-only: band members from MusicBrainz (rate-limited, cached for a week)
+  musicbrainz.ts             Server-only: band members, other performing names, and aliases (rate-limited, cached a week)
+  lastfm.ts                  Server-only: similar artists and MusicBrainz IDs from Last.fm (cached a day)
   concertAdditions.ts        Shared additions: songs others at the same show added, and keeping yours in sync
   sharedMatches.ts           The shared match table: reading shared matches, saving your votes, and which match wins
   database.types.ts          Generated from the database: every table and column's type (npm run db:types)
@@ -154,7 +155,8 @@ next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotif
 proxy.ts                     Runs before each page request: keeps the Supabase login fresh
 app/auth/confirm/route.ts    Where custom-template confirmation links land (for later, with custom SMTP)
 app/auth/callback/route.ts   Where the default confirmation email lands: logs you in
-app/api/recommendations      Server: similar artists from Last.fm (cached for a day)
+app/api/recommendations      Server: similar artists from Last.fm (fast, shown right away)
+app/api/recommendations/bands  Server: band members and memberships from MusicBrainz (slower, refines the list)
 app/api/spotify/match        Server: matches songs to Spotify tracks
 app/api/spotify/playlists    Server: creates a playlist and adds its tracks
 app/api/spotify/playlists/status   Server: which playlists are still in your Spotify library
@@ -1057,12 +1059,37 @@ vitest.config.mts            Test settings (including the time zone tests run in
 ### Skipping band members' solo music
 
 - Last.fm's data knows 5SOS fans listen to Luke Hemmings, so band members' solo projects would top every list, which isn't much of a discovery
-- **MusicBrainz** (a free, open, community-edited music database with a proper API) records **"member of band"** relationships. For each of your top artists, Encore asks Last.fm for its MusicBrainz ID, then asks MusicBrainz for its members (`lib/musicbrainz.ts`)
-- Candidates who are members of your top bands are skipped, matched by **MusicBrainz ID** first (reliable, since some members release music under a different name, like "ZAYN") and by **name** as a fallback (`membersToExclude` and `scoreCandidates`, tested)
+- **MusicBrainz** (a free, open, community-edited music database with a proper API) records how artists are related (`lib/musicbrainz.ts`):
+  - **"member of band"**: who's in a band (and, from the other side, which bands a person is in)
+  - **"is person"**: other names a person performs under. This is what catches **Agust D**, the solo name of BTS's SUGA: MusicBrainz lists SUGA as the member, and Agust D as a separate entry linked to him
+  - **Aliases**: other spellings of a name
+- For each of your top artists, Encore gets its MusicBrainz ID from Last.fm, finds its members, then each member's other names and aliases. All of them are skipped, matched by **ID** first (reliable) and **name** as a fallback
 - **The other direction is allowed on purpose**: if a top artist is a solo member of a band, that band can still be recommended
-- **Being a good API citizen**: MusicBrainz allows 1 request per second and asks apps to identify themselves. Each request carries a `User-Agent` with the app's name and a contact (`MUSICBRAINZ_CONTACT`, or the GitHub repo), and a small rate limiter reserves the next free 1.1-second slot for each request
-- **Caching with `unstable_cache`**: member lists are saved on the server for a week, keyed by artist, so the slow, rate-limited lookup only happens the first time. Without it, every visit to the discover tab would wait about a second per top artist
-- If member info is missing or MusicBrainz can't be reached, recommendations still work, just without the filter
+
+### Collaborations and duplicates
+
+- Last.fm sometimes lists **collaboration credits** as artists, and each spelling separately: "Bruno Mars, Anderson .Paak, Silk Sonic" and "Bruno Mars, Anderson .Paak & Silk Sonic" both appeared for a Bruno Mars fan
+- `splitCollaboration` splits a credit at commas, "&", "and", "x", "feat.", "ft.", "with", and "+". If any part is an artist you already know (or a skipped member), the whole credit is skipped
+  - "x" only splits as a separate word (with `\b`, a word boundary), so a band like "The xx" stays whole
+- `canonicalName` treats "&" and "and" as the same and ignores punctuation, so two spellings of a new artist merge into one recommendation, with their points added together
+- `[^\p{L}\p{N} ]` in the regular expression means "anything that isn't a letter or number in any language, or a space," so names in Korean, Japanese, and other scripts keep their letters
+
+### Diversity: a band over its own members
+
+- One Direction, Louis Tomlinson, and Niall Horan could take three of ten spots. When a band and its members are both recommended, `diversify` keeps only the band, freeing spots for other artists
+- Recommender systems call this **diversity**: a list of near-identical picks is less useful, even if each pick scores well. It's a common tradeoff against pure relevance
+- It works from MusicBrainz too: for each candidate, the bands it's a member of
+
+### Keeping it fast despite a slow source
+
+- MusicBrainz allows **1 request per second**, and these checks can take dozens of lookups the first time. So the work is split in two:
+  - `/api/recommendations` (Last.fm only) answers quickly, and the list shows right away
+  - `/api/recommendations/bands` (MusicBrainz) runs next, and the list refines itself when it finishes, with a "Checking band members..." note meanwhile
+- **Caching** (`unstable_cache`): every MusicBrainz answer is saved on the server for a week, keyed by artist, so the slow part only happens the first time for each artist
+- **A rate limiter with a budget**: each request reserves the next free 1.1-second slot. If the queue is already over 40 seconds long, further lookups are skipped for now; since finished ones are cached, a later visit picks up where it left off. `maxDuration = 60` lets the route run up to a minute once deployed
+- **Being a good API citizen**: each request carries a `User-Agent` with the app's name and a contact (`MUSICBRAINZ_CONTACT`, or the GitHub repo)
+- To avoid an endless loop, the band check is sent the candidate list scored *without* the band filter, so receiving its results doesn't change what it was asked about
+- If MusicBrainz can't be reached, recommendations still work, just without these filters
 
 ### Evaluating it
 
