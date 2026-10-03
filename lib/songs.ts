@@ -36,8 +36,11 @@ export function countSongs(concerts: Concert[]): SongCount[] {
   const counts = new Map<string, SongCount>();
 
   for (const concert of concerts) {
-    // Split medleys here (not when saving concerts), so concerts saved earlier benefit too
-    const songs = concert.songs.flatMap((song) => splitMedley(song.name).map((name) => ({ ...song, name })));
+    // Split medleys here (not when saving concerts), so concerts saved earlier benefit too.
+    // Songs you added yourself are never split: you typed or picked exactly one song.
+    const songs = concert.songs.flatMap((song) =>
+      song.addedByYou ? [song] : splitMedley(song.name).map((name) => ({ ...song, name }))
+    );
     for (const song of songs) {
       const key = songKey(concert.artist, song.name);
 
@@ -50,6 +53,8 @@ export function countSongs(concerts: Concert[]): SongCount[] {
         timesHeard: 0,
         concertIds: [],
       };
+      // Remember a known Spotify track for this song, if any concert has one (from a song you added)
+      if (!entry.spotifyId && song.spotifyId) entry.spotifyId = song.spotifyId;
 
       // Count each concert only once, so a song played twice in one show (a reprise) counts as 1
       if (!entry.concertIds.includes(concert.id)) {
@@ -89,4 +94,39 @@ export function groupByArtist(songs: SongCount[]): SongCount[] {
     (a, b) => top(b) - top(a) || total(b) - total(a) || a[0].artist.localeCompare(b[0].artist)
   );
   return sortedGroups.flat(); // join the groups back into one list
+}
+
+// ---- Adding songs that setlist.fm's setlist is missing (like a secret song) ----
+
+// Pure: adds a song to a concert, unless that song is already in its setlist.
+// Returns the updated concert, or an error message to show instead.
+// If the track is by a different artist than the one performing, it's recorded as a cover of that artist.
+export function addSongToConcert(
+  concert: Concert,
+  song: { name: string; artist?: string; spotifyId?: string }
+): { concert: Concert } | { error: string } {
+  const name = song.name.trim();
+  if (!name) return { error: "Enter a song name." };
+
+  const alreadyThere = concert.songs.some((s) =>
+    splitMedley(s.name).some((part) => normalize(part) === normalize(name))
+  );
+  if (alreadyThere) return { error: `"${name}" is already in this setlist.` };
+
+  const isCover = song.artist !== undefined && normalize(song.artist) !== normalize(concert.artist);
+  const added: Concert["songs"][number] = {
+    name,
+    addedByYou: true,
+    ...(song.spotifyId ? { spotifyId: song.spotifyId } : {}),
+    ...(isCover ? { coverOf: song.artist } : {}),
+  };
+  return { concert: { ...concert, songs: [...concert.songs, added] } }; // a new concert object, never mutated
+}
+
+// Pure: removes a song you added (songs from setlist.fm can't be removed)
+export function removeAddedSong(concert: Concert, songName: string): Concert {
+  return {
+    ...concert,
+    songs: concert.songs.filter((s) => !(s.addedByYou && s.name === songName)),
+  };
 }

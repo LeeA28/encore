@@ -78,3 +78,12 @@ export function MenuIcon({ size = 20 }: IconProps) {
     </svg>
   );
 }
+
+export function SparkIcon({ size = 26 }: IconProps) {
+  // A four-pointed star: "discover"
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2c.6 4.8 3.2 7.4 8 8-4.8.6-7.4 3.2-8 8-.6-4.8-3.2-7.4-8-8 4.8-.6 7.4-3.2 8-8z" />
+    </svg>
+  );
+}

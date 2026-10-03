@@ -767,6 +767,21 @@ details ol {
   font-size: 14px;
 }
 
+/* Recommendation rows: on narrow screens, the links drop below the artist instead of squeezing it */
+.rec-row {
+  flex-wrap: wrap;
+}
+
+.rec-row .song-info {
+  flex: 1 1 220px;
+}
+
+.rec-links {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
 /* ---------- Tier list ---------- */
 
 .tier-board {

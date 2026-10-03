@@ -12,8 +12,9 @@ import ConcertSearch from "./ConcertSearch";
 import SongList from "./SongList";
 import RankTab from "./RankTab";
 import AccountTab from "./AccountTab";
+import DiscoverTab from "./DiscoverTab";
 
-export type Tab = "concerts" | "songs" | "rank" | "account";
+export type Tab = "concerts" | "songs" | "rank" | "discover" | "account";
 
 type Props = {
   user: User | null;
@@ -58,7 +59,13 @@ export default function Workspace({ user, tab, spotifyConnected, flushRef }: Pro
       )}
 
       {tab === "concerts" && (
-        <ConcertSearch myConcerts={data.concerts} onAdd={data.addConcert} onRemove={data.removeConcert} />
+        <ConcertSearch
+          myConcerts={data.concerts}
+          onAdd={data.addConcert}
+          onRemove={data.removeConcert}
+          onUpdate={data.updateConcert}
+          spotifyConnected={spotifyConnected}
+        />
       )}
       {tab === "songs" && (
         <SongList
@@ -71,6 +78,7 @@ export default function Workspace({ user, tab, spotifyConnected, flushRef }: Pro
         />
       )}
       {tab === "rank" && <RankTab songs={songs} data={data} spotifyConnected={spotifyConnected} />}
+      {tab === "discover" && <DiscoverTab songs={songs} data={data} />}
       {tab === "account" && user && <AccountTab user={user} />}
     </main>
   );

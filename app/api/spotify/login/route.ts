@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { COOKIE, SCOPES, cookieOptions, getConfig } from "@/lib/spotifyAuth";
 
-const TABS = ["concerts", "songs", "rank"];
+const TABS = ["concerts", "songs", "rank", "discover"];
 
 export async function GET(request: NextRequest) {
   const { clientId, redirectUri } = getConfig();

@@ -4,7 +4,7 @@
 // and expect(actual).toBe(expected) fails the test if they don't match.
 
 import { describe, expect, it } from "vitest";
-import { countSongs, groupByArtist, normalize, songKey, splitMedley } from "./songs";
+import { addSongToConcert, countSongs, groupByArtist, normalize, removeAddedSong, songKey, splitMedley } from "./songs";
 import type { Concert, SongCount } from "./types";
 
 // Small helpers to make test data short to write
@@ -103,5 +103,56 @@ describe("groupByArtist", () => {
   it("breaks ties between artists by their total plays", () => {
     const ordered = groupByArtist([count("X", "Solo", 3), count("Y1", "Duo", 3), count("Y2", "Duo", 1)]);
     expect(ordered.map((s) => s.name)).toEqual(["Y1", "Y2", "X"]);
+  });
+});
+
+describe("addSongToConcert", () => {
+  const show = concert("a", "5 Seconds of Summer", ["Amnesia", "Easier / Teeth"]);
+
+  it("adds a song the setlist was missing, marked as added by you", () => {
+    const result = addSongToConcert(show, { name: "Secret Song", artist: "5 Seconds of Summer", spotifyId: "abc" });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.concert.songs.at(-1)).toEqual({ name: "Secret Song", addedByYou: true, spotifyId: "abc" });
+  });
+
+  it("doesn't change the original concert", () => {
+    addSongToConcert(show, { name: "Secret Song" });
+    expect(show.songs).toHaveLength(2);
+  });
+
+  it("refuses a song that's already in the setlist, including inside a medley", () => {
+    expect(addSongToConcert(show, { name: "amnesia" })).toEqual({ error: '"amnesia" is already in this setlist.' });
+    expect("error" in addSongToConcert(show, { name: "Teeth" })).toBe(true);
+  });
+
+  it("records a track by a different artist as a cover", () => {
+    const result = addSongToConcert(show, { name: "Old Hit", artist: "Other Band" });
+    if ("error" in result) throw new Error(result.error);
+    expect(result.concert.songs.at(-1)?.coverOf).toBe("Other Band");
+  });
+
+  it("refuses an empty name", () => {
+    expect(addSongToConcert(show, { name: "   " })).toEqual({ error: "Enter a song name." });
+  });
+});
+
+describe("removeAddedSong", () => {
+  it("removes songs you added, but never songs from setlist.fm", () => {
+    const result = addSongToConcert(concert("a", "Band", ["Hit"]), { name: "Extra" });
+    if ("error" in result) throw new Error(result.error);
+    expect(removeAddedSong(result.concert, "Extra").songs.map((s) => s.name)).toEqual(["Hit"]);
+    expect(removeAddedSong(result.concert, "Hit").songs.map((s) => s.name)).toEqual(["Hit", "Extra"]);
+  });
+});
+
+describe("countSongs with added songs", () => {
+  it("counts added songs, keeps their Spotify track, and never splits them like medleys", () => {
+    const show: Concert = {
+      ...concert("a", "Band", ["Hit"]),
+      songs: [{ name: "Hit" }, { name: "This / That", addedByYou: true, spotifyId: "t1" }],
+    };
+    const songs = countSongs([show]);
+    expect(songs.map((s) => s.name).sort()).toEqual(["Hit", "This / That"]);
+    expect(songs.find((s) => s.name === "This / That")?.spotifyId).toBe("t1");
   });
 });

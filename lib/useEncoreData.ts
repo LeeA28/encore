@@ -23,6 +23,7 @@ import {
 } from "./guestData";
 import {
   deleteConcert,
+  updateConcertSongs,
   deleteCustomList,
   loadAccountData,
   mergeGuestData,
@@ -143,6 +144,12 @@ export function useEncoreData(user: User | null) {
     if (user) save(() => saveConcerts(createClient(), user.id, [concert]));
   }
 
+  // Saves a changed concert (like after adding a song setlist.fm was missing)
+  function updateConcert(concert: Concert) {
+    setConcerts((prev) => prev.map((c) => (c.id === concert.id ? concert : c)));
+    if (user) save(() => updateConcertSongs(createClient(), user.id, concert));
+  }
+
   function removeConcert(id: string) {
     setConcerts((prev) => prev.filter((c) => c.id !== id));
     if (user) save(() => deleteConcert(createClient(), user.id, id));
@@ -193,6 +200,7 @@ export function useEncoreData(user: User | null) {
     flush,
     concerts,
     addConcert,
+    updateConcert,
     removeConcert,
     liveTiers,
     setLiveTiers,

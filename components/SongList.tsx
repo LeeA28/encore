@@ -83,7 +83,14 @@ export default function SongList({
       {building && (
         <PlaylistBuilder
           // Grouped by artist (artists ordered by their most-heard song), each artist's songs most heard first
-          songs={groupByArtist(songs).map((s) => ({ key: s.key, name: s.name, artist: s.artist, coverOf: s.coverOf }))}
+          songs={groupByArtist(songs).map((s) => ({
+            key: s.key,
+            name: s.name,
+            artist: s.artist,
+            coverOf: s.coverOf,
+            // Songs you added from Spotify already know their exact track, so they skip matching
+            match: s.spotifyId ? { id: s.spotifyId, name: s.name, artist: s.coverOf ?? s.artist } : undefined,
+          }))}
           defaultName="Encore: every song I've heard live"
           source="Songs heard live"
           spotifyConnected={spotifyConnected}

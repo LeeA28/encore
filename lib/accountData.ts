@@ -124,6 +124,17 @@ export async function saveConcerts(supabase: EncoreSupabase, userId: string, con
   );
 }
 
+// Replaces a concert's song list (used when you add or remove a song yourself)
+export async function updateConcertSongs(supabase: EncoreSupabase, userId: string, concert: Concert) {
+  check(
+    await supabase
+      .from("concerts")
+      .update({ songs: concert.songs as unknown as Json })
+      .eq("user_id", userId)
+      .eq("setlist_id", concert.id)
+  );
+}
+
 export async function deleteConcert(supabase: EncoreSupabase, userId: string, concertId: string) {
   check(await supabase.from("concerts").delete().eq("user_id", userId).eq("setlist_id", concertId));
 }

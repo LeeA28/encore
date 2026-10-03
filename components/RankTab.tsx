@@ -27,6 +27,7 @@ export default function RankTab({ songs, data, spotifyConnected }: Props) {
         name: s.name,
         artist: s.artist,
         coverOf: s.coverOf, // needed to find covers on Spotify
+        spotifyId: s.spotifyId, // songs you added from Spotify skip matching in tier playlists
         detail: `heard ${s.timesHeard}×`,
       })),
     [songs]

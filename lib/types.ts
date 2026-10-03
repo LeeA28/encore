@@ -4,6 +4,8 @@
 export type Song = {
   name: string;
   coverOf?: string; // the original artist, only if this song was a cover
+  addedByYou?: boolean; // added by the user, because setlist.fm's setlist was missing it (e.g. a secret song)
+  spotifyId?: string; // for songs added from Spotify: the exact track, so it never needs matching
 };
 
 export type Concert = {
@@ -26,6 +28,7 @@ export type SongCount = {
   coverOf?: string;
   timesHeard: number; // number of different concerts where you heard it
   concertIds: string[];
+  spotifyId?: string; // known Spotify track (from a song you added from Spotify), so playlists skip matching
 };
 
 // Anything that can go in a tier list: a song heard live, or a song added from Spotify

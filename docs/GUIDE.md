@@ -110,6 +110,8 @@ components/
   AuthModal.tsx              The log in / sign up pop-up (with resend confirmation email)
   ThemeToggle.tsx            The sun/moon light/dark mode button (kept in sync across both header layouts)
   HeaderMenu.tsx             The ☰ menu on narrow screens: Spotify, Account, Log in/out
+  DiscoverTab.tsx            The discover tab: recommended artists, with reasons
+  AddSongPanel.tsx           "+ Add a song" on your concerts: search Spotify or type a song setlist.fm missed
   ConfirmDialog.tsx          Encore's "are you sure?" pop-up, used through useConfirm()
   AccountTab.tsx             The Account tab: your details and changing your password
   PasswordForm.tsx           "Set a new password" (typed twice), used by Account and reset links
@@ -142,6 +144,7 @@ lib/
   authErrors.ts              Turns Supabase's error codes into plain-language messages
   matching.ts                Pure: Spotify search queries and scoring for song matching
   matchCache.ts              Remembers matched tracks in the browser
+  recommend.ts               Pure: taste profile, candidate scoring, and reasons for recommendations
   sharedMatches.ts           The shared match table: reading shared matches, saving your votes, and which match wins
   database.types.ts          Generated from the database: every table and column's type (npm run db:types)
   db.ts                      Short names for the database types: Row<"concerts">, Insert<...>, EncoreSupabase
@@ -149,6 +152,7 @@ next.config.ts               Allows hot reload from 127.0.0.1 (needed for Spotif
 proxy.ts                     Runs before each page request: keeps the Supabase login fresh
 app/auth/confirm/route.ts    Where custom-template confirmation links land (for later, with custom SMTP)
 app/auth/callback/route.ts   Where the default confirmation email lands: logs you in
+app/api/recommendations      Server: similar artists from Last.fm (cached for a day)
 app/api/spotify/match        Server: matches songs to Spotify tracks
 app/api/spotify/playlists    Server: creates a playlist and adds its tracks
 app/api/spotify/playlists/status   Server: which playlists are still in your Spotify library
@@ -999,6 +1003,67 @@ vitest.config.mts            Test settings (including the time zone tests run in
 
 ---
 
+## Step 23: Adding songs setlist.fm missed
+
+### What it's for
+
+- Songs you heard that aren't in setlist.fm's setlist, like 5SOS's secret song on the Everyone's a Star Tour (chosen the day of each show), an encore someone forgot, or a whole setlist for a concert marked "no setlist yet"
+
+### How it works for you
+
+- **Your concerts** → **"+ Add a song"** on any concert
+- **Search Spotify** (when connected) and pick the exact track, or **add it as typed** for songs that aren't on Spotify (like an unreleased secret song)
+- Added songs appear at the end of the setlist with an **"added by you"** label and a remove link. Songs from setlist.fm can't be removed
+- They count everywhere: the Songs tab, tier lists, and playlists
+
+### How it's built
+
+- **No database change**: each saved concert already stores its song list as JSON, so added songs join that list with `addedByYou: true`. Saving uses a new `updateConcertSongs` (Supabase) and `updateConcert` action (in `useEncoreData`)
+- **Pure functions, tested** (`addSongToConcert` and `removeAddedSong` in `lib/songs.ts`):
+  - Duplicates are refused, including songs inside a medley entry ("Teeth" is already in "Easier / Teeth")
+  - A track by a different artist than the performer is recorded as a cover, the same way setlist.fm marks covers
+  - Both return new concert objects instead of changing the old one
+- **Songs added from Spotify keep their track ID** (`spotifyId`), which carries through `countSongs`, so playlists use that exact track instead of searching
+- **Added songs are never split** like medleys, since you chose exactly one song (even if its name contains " / ")
+
+---
+
+## Step 24: Recommendations (the discover tab)
+
+### The approach: content-based recommendation
+
+- Recommend artists **similar to the ones you already like**. It works from day one, even with a single user
+- Spotify removed its related-artists and recommendations features from its API for new apps in late 2024, so Encore builds its own, using **Last.fm's similar-artists data** (based on millions of people's listening) through `/api/recommendations`, which keeps the Last.fm key on the server and caches answers for a day
+
+### The math (`lib/recommend.ts`, all tested)
+
+- **Step 1: your taste profile.** Every artist you know gets points:
+  - Each of their songs in your tiers (live and custom lists): S = 5, A = 4, B = 3, C = 2, D = 1
+  - Plus 1 point per concert of theirs you've been to
+  - These are **explicit signals** (rankings you chose) and **implicit signals** (what your behavior shows, like going to a band's shows three times). Designing and weighting signals is a core recommender-systems skill
+- **Step 2: seeds.** Your top 8 artists by points
+- **Step 3: candidates.** For each seed, Last.fm returns similar artists with a similarity from 0 to 1. A candidate's score is the sum of (seed's points × similarity) over every seed that points to it, so artists similar to *several* of your favorites rise to the top
+- **Worked example** (also a test):
+  - 5SOS: 3 S + 2 A + 3 concerts = 3 × 5 + 2 × 4 + 3 × 1 = 15 + 8 + 3 = **26**
+  - Bruno Mars: 1 S + 2 B + 1 concert = 1 × 5 + 2 × 3 + 1 × 1 = 5 + 6 + 1 = **12**
+  - Candidate A (0.9 to 5SOS, 0.2 to Bruno Mars): 26 × 0.9 + 12 × 0.2 = 23.4 + 2.4 = **25.8**
+  - Candidate B (0.3 to 5SOS, 0.8 to Bruno Mars): 26 × 0.3 + 12 × 0.8 = 7.8 + 9.6 = **17.4**
+- Artists you've already seen or ranked are skipped, so every suggestion is new
+- Each suggestion's **reason** names the seed that contributed the most points (5SOS gave 23.4 of Candidate A's 25.8), described by your strongest signal ("Because you ranked 3 songs by 5SOS in S tier")
+- The tab shows which artists it's based on, with their points: **explainable** recommendations are easier to trust, and easier to debug
+
+### Evaluating it
+
+- A recommender is only as good as its measurement. The simplest offline check is a **hold-out test**: hide something you know the user likes, and see if the recommendations find it
+- `recommend.test.ts` does a miniature version: remove Bruno Mars from the profile, and check he comes back as the top recommendation from the artists that remain
+- With real data, this scales up: hide each of a user's favorite artists in turn, and measure how often it appears in the top 10 (called **hit rate @ 10**)
+
+### What's next for it (stage 2)
+
+- **Collaborative filtering**: "people who saw the same shows as you also saw ___," using Encore's own users. It finds connections that similarity data can't, but needs many users to work, a limitation called the **cold start problem**
+
+---
+
 ## Things to test and play with
 
 - **Search**
@@ -1091,6 +1156,7 @@ vitest.config.mts            Test settings (including the time zone tests run in
 - **Automated tests and CI**: 42 tests on the core logic, regression tests for real bugs, and checks on every push
 - **Resilience to flaky APIs**: retries with exponential backoff, isolating failures per song, and separating "failed" from "not found"
 - **Race conditions in search-as-you-type**: debouncing plus cancelling stale requests with `AbortController`
+- **A recommender system**: explicit and implicit signals, weighted similarity scoring, explainable reasons, and a hold-out evaluation
 - **A crowdsourced match table with privacy**: votes hidden by RLS, totals exposed through a security definer function, and a tie-aware winner picked with SQL window functions
 - **Database security with Row Level Security**: why a public key is safe when Postgres enforces per-user access rules
 - **Designing an idempotent data migration**: merging guest data safely even when it runs twice

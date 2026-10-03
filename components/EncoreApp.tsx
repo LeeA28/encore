@@ -12,7 +12,7 @@ import HeaderMenu from "./HeaderMenu";
 import { LogoIcon } from "./Icons";
 
 // The tabs in the nav bar. "account" is opened from the Account button on the right instead.
-const TABS: Tab[] = ["concerts", "songs", "rank"];
+const TABS: Tab[] = ["concerts", "songs", "rank", "discover"];
 
 // The top-level component. ConfirmProvider wraps everything, so any component can open
 // Encore's confirmation pop-up with useConfirm().

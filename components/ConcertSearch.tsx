@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import type { Concert } from "@/lib/types";
 import { formatCity, formatDate } from "@/lib/concerts";
 import { getCountries } from "@/lib/countries";
+import { removeAddedSong } from "@/lib/songs";
+import AddSongPanel from "./AddSongPanel";
 import { TicketIcon } from "./Icons";
 
 // Built once when this file loads (not on every render), since the list never changes
@@ -15,9 +17,11 @@ type Props = {
   myConcerts: Concert[];
   onAdd: (concert: Concert) => void; // "a function that takes a Concert and returns nothing"
   onRemove: (id: string) => void;
+  onUpdate: (concert: Concert) => void; // saves a concert after adding or removing your own songs
+  spotifyConnected: boolean | null;
 };
 
-export default function ConcertSearch({ myConcerts, onAdd, onRemove }: Props) {
+export default function ConcertSearch({ myConcerts, onAdd, onRemove, onUpdate, spotifyConnected }: Props) {
   const [artist, setArtist] = useState("");
   const [year, setYear] = useState("");
   const [city, setCity] = useState("");
@@ -161,7 +165,13 @@ export default function ConcertSearch({ myConcerts, onAdd, onRemove }: Props) {
         ) : (
           <div className="concert-grid">
             {sortedMine.map((c) => (
-              <ConcertCard key={c.id} concert={c} selected onToggle={() => onRemove(c.id)} />
+              <ConcertCard
+                key={c.id}
+                concert={c}
+                selected
+                onToggle={() => onRemove(c.id)}
+                editable={{ onUpdate, spotifyConnected }}
+              />
             ))}
           </div>
         )}
@@ -172,7 +182,21 @@ export default function ConcertSearch({ myConcerts, onAdd, onRemove }: Props) {
 
 // One concert as a small card. "selected" = it's in your concerts.
 // Date, city, and tour stand out most; the artist is quieter, since you just searched for them.
-function ConcertCard({ concert: c, selected, onToggle }: { concert: Concert; selected: boolean; onToggle: () => void }) {
+// "editable" (only in Your concerts) adds "+ Add a song" and lets you remove songs you added.
+function ConcertCard({
+  concert: c,
+  selected,
+  onToggle,
+  editable,
+}: {
+  concert: Concert;
+  selected: boolean;
+  onToggle: () => void;
+  editable?: { onUpdate: (concert: Concert) => void; spotifyConnected: boolean | null };
+}) {
+  const [adding, setAdding] = useState(false);
+  const addedCount = c.songs.filter((s) => s.addedByYou).length;
+
   return (
     <div className={`concert-card ${selected ? "selected" : ""}`}>
       <div className="concert-date">{formatDate(c.date)}</div>
@@ -184,18 +208,49 @@ function ConcertCard({ concert: c, selected, onToggle }: { concert: Concert; sel
 
       {c.songs.length > 0 ? (
         <details>
-          <summary>Setlist</summary>
+          <summary>
+            Setlist{addedCount > 0 && ` (${addedCount} added by you)`}
+          </summary>
           <ol>
             {c.songs.map((song, i) => (
               <li key={i}>
                 {song.name}
                 {song.coverOf && ` (${song.coverOf} cover)`}
+                {song.addedByYou && (
+                  <>
+                    {" "}
+                    <span className="pill pill-blue">added by you</span>
+                    {editable && (
+                      <button
+                        className="link-button"
+                        style={{ marginTop: 0, marginLeft: 6, minHeight: 0 }}
+                        onClick={() => editable.onUpdate(removeAddedSong(c, song.name))}
+                      >
+                        remove
+                      </button>
+                    )}
+                  </>
+                )}
               </li>
             ))}
           </ol>
         </details>
       ) : (
         <span className="concert-meta">No setlist yet</span>
+      )}
+
+      {editable && !adding && (
+        <button className="btn btn-ghost btn-small" style={{ alignSelf: "flex-start" }} onClick={() => setAdding(true)}>
+          + Add a song
+        </button>
+      )}
+      {editable && adding && (
+        <AddSongPanel
+          concert={c}
+          spotifyConnected={editable.spotifyConnected}
+          onSave={editable.onUpdate}
+          onClose={() => setAdding(false)}
+        />
       )}
 
       <div className="concert-actions">
