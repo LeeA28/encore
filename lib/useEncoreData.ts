@@ -33,6 +33,7 @@ import {
   savePlaylists,
   deletePlaylist,
 } from "./accountData";
+import { deleteAdditions, diffAddedSongs, saveAdditions, syncAllAdditions } from "./concertAdditions";
 
 export type DataStatus = "loading" | "ready" | "error";
 
@@ -90,6 +91,12 @@ export function useEncoreData(user: User | null) {
         setCustomLists(account.customLists);
         setPlaylists(account.playlists);
         setStatus("ready");
+
+        // In the background: make sure songs you added are shared with others at the same shows
+        // (including ones added before sharing existed). Failing here doesn't affect anything else.
+        syncAllAdditions(supabase, user!.id, account.concerts).catch((err) =>
+          console.warn("Couldn't sync added songs.", err)
+        );
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Couldn't load your data.");
@@ -146,13 +153,25 @@ export function useEncoreData(user: User | null) {
 
   // Saves a changed concert (like after adding a song setlist.fm was missing)
   function updateConcert(concert: Concert) {
+    const before = concerts.find((c) => c.id === concert.id);
     setConcerts((prev) => prev.map((c) => (c.id === concert.id ? concert : c)));
-    if (user) save(() => updateConcertSongs(createClient(), user.id, concert));
+    if (user) {
+      save(() => updateConcertSongs(createClient(), user.id, concert));
+      // Keep the shared additions in step: share songs you added, unshare ones you removed
+      const { added, removed } = diffAddedSongs(before, concert);
+      save(async () => {
+        await saveAdditions(createClient(), user.id, concert.id, added);
+        if (removed.length > 0) await deleteAdditions(createClient(), user.id, concert.id, removed);
+      });
+    }
   }
 
   function removeConcert(id: string) {
     setConcerts((prev) => prev.filter((c) => c.id !== id));
-    if (user) save(() => deleteConcert(createClient(), user.id, id));
+    if (user) {
+      save(() => deleteConcert(createClient(), user.id, id));
+      save(() => deleteAdditions(createClient(), user.id, id)); // you weren't at this show after all
+    }
   }
 
   function setLiveTiers(tiers: Tiers) {

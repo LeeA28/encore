@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import type { Concert } from "@/lib/types";
 import { formatCity, formatDate } from "@/lib/concerts";
 import { getCountries } from "@/lib/countries";
-import { removeAddedSong } from "@/lib/songs";
+import { addSongToConcert, removeAddedSong } from "@/lib/songs";
+import { fetchConcertAdditions, newSuggestions, type ConcertAddition } from "@/lib/concertAdditions";
 import AddSongPanel from "./AddSongPanel";
 import { TicketIcon } from "./Icons";
 
@@ -86,6 +87,20 @@ export default function ConcertSearch({ myConcerts, onAdd, onRemove, onUpdate, s
   }
 
   const myIds = new Set(myConcerts.map((c) => c.id));
+
+  // Songs other Encore users added to the same shows you went to
+  const [othersAdded, setOthersAdded] = useState<Record<string, ConcertAddition[]>>({});
+  const myIdList = [...myIds].sort().join(","); // a simple value the effect can watch
+  useEffect(() => {
+    if (!myIdList) return;
+    let cancelled = false;
+    fetchConcertAdditions(myIdList.split(",")).then((result) => {
+      if (!cancelled) setOthersAdded(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [myIdList]);
   const sortedMine = [...myConcerts].sort((a, b) => b.date.localeCompare(a.date)); // newest first
 
   return (
@@ -171,6 +186,7 @@ export default function ConcertSearch({ myConcerts, onAdd, onRemove, onUpdate, s
                 selected
                 onToggle={() => onRemove(c.id)}
                 editable={{ onUpdate, spotifyConnected }}
+                suggestions={newSuggestions(c, othersAdded[c.id] ?? [])}
               />
             ))}
           </div>
@@ -188,11 +204,13 @@ function ConcertCard({
   selected,
   onToggle,
   editable,
+  suggestions = [],
 }: {
   concert: Concert;
   selected: boolean;
   onToggle: () => void;
   editable?: { onUpdate: (concert: Concert) => void; spotifyConnected: boolean | null };
+  suggestions?: ConcertAddition[]; // songs other people at this show added
 }) {
   const [adding, setAdding] = useState(false);
   const addedCount = c.songs.filter((s) => s.addedByYou).length;
@@ -237,6 +255,34 @@ function ConcertCard({
         </details>
       ) : (
         <span className="concert-meta">No setlist yet</span>
+      )}
+
+      {/* Songs other Encore users who were at this show added (like a secret song) */}
+      {editable && suggestions.length > 0 && (
+        <div className="panel" style={{ margin: "4px 0 0", padding: 12 }}>
+          <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>
+            Others who were here added:
+          </div>
+          {suggestions.map((s) => (
+            <div key={s.songName} className="form-row" style={{ justifyContent: "space-between" }}>
+              <span>
+                {s.songName}{" "}
+                <span className="muted" style={{ fontSize: 13 }}>
+                  ({s.people} {s.people === 1 ? "person" : "people"})
+                </span>
+              </span>
+              <button
+                className="btn btn-light btn-small"
+                onClick={() => {
+                  const result = addSongToConcert(c, { name: s.songName, spotifyId: s.spotifyId });
+                  if ("concert" in result) editable.onUpdate(result.concert);
+                }}
+              >
+                Add
+              </button>
+            </div>
+          ))}
+        </div>
       )}
 
       {editable && !adding && (

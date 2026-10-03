@@ -8,6 +8,7 @@ import type { SongCount } from "@/lib/types";
 import type { EncoreDataApi } from "@/lib/useEncoreData";
 import {
   buildTasteProfile,
+  membersToExclude,
   pickSeeds,
   reasonFor,
   scoreCandidates,
@@ -34,6 +35,7 @@ export default function DiscoverTab({ songs, data }: Props) {
   const seedNames = seeds.map((s) => s.artist).join("|"); // a simple value the effect below can watch
 
   const [similar, setSimilar] = useState<Record<string, SimilarArtist[]> | null>(null);
+  const [members, setMembers] = useState<Record<string, { id: string; name: string }[]>>({});
   const [error, setError] = useState("");
 
   // Look up similar artists for your top artists
@@ -48,7 +50,9 @@ export default function DiscoverTab({ songs, data }: Props) {
       .then(async (res) => {
         const body = await res.json();
         if (!res.ok) throw new Error(body.error);
-        if (!cancelled) setSimilar(body.similar);
+        if (cancelled) return;
+        setSimilar(body.similar);
+        setMembers(body.members ?? {});
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Couldn't load recommendations.");
@@ -60,8 +64,9 @@ export default function DiscoverTab({ songs, data }: Props) {
 
   // Step 3: score the similar artists
   const recommendations: Recommendation[] = useMemo(
-    () => (similar ? scoreCandidates(profile, similar) : []),
-    [profile, similar]
+    // Members of your top bands are skipped (their solo music isn't much of a discovery)
+    () => (similar ? scoreCandidates(profile, similar, 10, membersToExclude(members)) : []),
+    [profile, similar, members]
   );
 
   return (
@@ -83,9 +88,10 @@ export default function DiscoverTab({ songs, data }: Props) {
             <span className="muted" style={{ fontSize: 14, alignSelf: "center" }}>
               Based on:
             </span>
+            {/* Ordered from your top artist down; the points stay behind the scenes */}
             {seeds.map((s) => (
               <span key={s.artist} className="pill">
-                {s.artist} · {s.score} pts
+                {s.artist}
               </span>
             ))}
           </div>

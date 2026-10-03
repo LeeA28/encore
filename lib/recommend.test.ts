@@ -1,7 +1,7 @@
 // Tests for artist recommendations (lib/recommend.ts), including the worked example from the guide
 
 import { describe, expect, it } from "vitest";
-import { buildTasteProfile, pickSeeds, reasonFor, scoreCandidates } from "./recommend";
+import { buildTasteProfile, membersToExclude, pickSeeds, reasonFor, scoreCandidates } from "./recommend";
 import { emptyTiers } from "./tiers";
 import { songKey } from "./songs";
 import type { Concert, SongCount } from "./types";
@@ -95,6 +95,33 @@ describe("scoreCandidates", () => {
       ],
     });
     expect(recs[0].artist).toBe("Bruno Mars");
+  });
+});
+
+describe("skipping members of your top bands", () => {
+  const similar = {
+    "5SOS": [
+      { name: "Luke Hemmings", match: 0.95, mbid: "luke-id" }, // a member, matched by ID
+      { name: "Calum Hood", match: 0.9 }, // a member, matched by name (no ID)
+      { name: "Candidate A", match: 0.8 },
+    ],
+  };
+  const exclude = membersToExclude({
+    "5SOS": [
+      { id: "luke-id", name: "Luke Hemmings" },
+      { id: "calum-id", name: "Calum Hood" },
+    ],
+  });
+
+  it("leaves out a band's members, matching by MusicBrainz ID or by name", () => {
+    const recs = scoreCandidates(exampleProfile(), similar, 10, exclude);
+    expect(recs.map((r) => r.artist)).toEqual(["Candidate A"]);
+  });
+
+  it("still suggests a band when a top artist is a solo member of it", () => {
+    // Exclusions only come from your top artists' band members, so a band itself is never excluded
+    const recs = scoreCandidates(exampleProfile(), { "Bruno Mars": [{ name: "Some Band", match: 0.9 }] }, 10, exclude);
+    expect(recs.map((r) => r.artist)).toEqual(["Some Band"]);
   });
 });
 

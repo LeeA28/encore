@@ -144,7 +144,9 @@ lib/
   authErrors.ts              Turns Supabase's error codes into plain-language messages
   matching.ts                Pure: Spotify search queries and scoring for song matching
   matchCache.ts              Remembers matched tracks in the browser
-  recommend.ts               Pure: taste profile, candidate scoring, and reasons for recommendations
+  recommend.ts               Pure: taste profile, candidate scoring, reasons, and skipping band members
+  musicbrainz.ts             Server-only: band members from MusicBrainz (rate-limited, cached for a week)
+  concertAdditions.ts        Shared additions: songs others at the same show added, and keeping yours in sync
   sharedMatches.ts           The shared match table: reading shared matches, saving your votes, and which match wins
   database.types.ts          Generated from the database: every table and column's type (npm run db:types)
   db.ts                      Short names for the database types: Row<"concerts">, Insert<...>, EncoreSupabase
@@ -1050,7 +1052,17 @@ vitest.config.mts            Test settings (including the time zone tests run in
   - Candidate B (0.3 to 5SOS, 0.8 to Bruno Mars): 26 × 0.3 + 12 × 0.8 = 7.8 + 9.6 = **17.4**
 - Artists you've already seen or ranked are skipped, so every suggestion is new
 - Each suggestion's **reason** names the seed that contributed the most points (5SOS gave 23.4 of Candidate A's 25.8), described by your strongest signal ("Because you ranked 3 songs by 5SOS in S tier")
-- The tab shows which artists it's based on, with their points: **explainable** recommendations are easier to trust, and easier to debug
+- The tab shows which artists it's based on (ordered by points, without showing the numbers): **explainable** recommendations are easier to trust, and easier to debug
+
+### Skipping band members' solo music
+
+- Last.fm's data knows 5SOS fans listen to Luke Hemmings, so band members' solo projects would top every list, which isn't much of a discovery
+- **MusicBrainz** (a free, open, community-edited music database with a proper API) records **"member of band"** relationships. For each of your top artists, Encore asks Last.fm for its MusicBrainz ID, then asks MusicBrainz for its members (`lib/musicbrainz.ts`)
+- Candidates who are members of your top bands are skipped, matched by **MusicBrainz ID** first (reliable, since some members release music under a different name, like "ZAYN") and by **name** as a fallback (`membersToExclude` and `scoreCandidates`, tested)
+- **The other direction is allowed on purpose**: if a top artist is a solo member of a band, that band can still be recommended
+- **Being a good API citizen**: MusicBrainz allows 1 request per second and asks apps to identify themselves. Each request carries a `User-Agent` with the app's name and a contact (`MUSICBRAINZ_CONTACT`, or the GitHub repo), and a small rate limiter reserves the next free 1.1-second slot for each request
+- **Caching with `unstable_cache`**: member lists are saved on the server for a week, keyed by artist, so the slow, rate-limited lookup only happens the first time. Without it, every visit to the discover tab would wait about a second per top artist
+- If member info is missing or MusicBrainz can't be reached, recommendations still work, just without the filter
 
 ### Evaluating it
 
@@ -1061,6 +1073,27 @@ vitest.config.mts            Test settings (including the time zone tests run in
 ### What's next for it (stage 2)
 
 - **Collaborative filtering**: "people who saw the same shows as you also saw ___," using Encore's own users. It finds connections that similarity data can't, but needs many users to work, a limitation called the **cold start problem**
+
+---
+
+## Step 25: Shared additions for the same concert
+
+### What it does
+
+- When you add a song a show's setlist was missing (like 5SOS's secret song), other Encore users who were at **the same show** see "Others who were here added: [song] (1 person)" on that concert, with a one-click **Add**
+- Suggestions appear once **1 other person** added a song: few Encore users may have been at any one show, and nothing is added unless you click Add, since you were there too. The count is shown so you can judge
+- Songs already in your setlist aren't suggested (including ones inside a medley)
+
+### How it works
+
+- **Same show = same setlist.fm ID.** Every concert has a unique ID, so Encore knows when two people were at the same show
+- **A new migration** (`20261004000000_song_additions.sql`): a `song_additions` table, one row per person, per concert, per song, with the name normalized so "Don't" and "dont" count as the same song
+- **Privacy**: Row Level Security means you only see your own rows, so nobody can find out which shows you went to. `get_concert_additions` (a `security definer` function, like shared matches) returns only songs and counts, never who
+  - It leaves out your own additions using `user_id is distinct from auth.uid()`. Plain `<>` wouldn't work for guests: their `auth.uid()` is null, and in SQL, comparing anything to null with `<>` gives "unknown" rather than true, which would hide everything. `is distinct from` treats null as an ordinary value
+  - `mode() within group (...)`: if people spelled the song slightly differently, the most common spelling is shown
+- **Tested in PGlite**: as one user, their own addition is left out and the other person's count shows; as a guest, everyone's additions are counted
+- **Staying in sync** (`useEncoreData`): adding or removing a song (Step 23) also adds or removes your shared row (`diffAddedSongs` works out what changed, tested), and removing a concert removes your rows for it. On login, every song you've added is synced in the background, including ones added before sharing existed (upserts make it safe to repeat)
+- Guests can see and use suggestions; only logged-in users' additions are shared
 
 ---
 
@@ -1156,6 +1189,7 @@ vitest.config.mts            Test settings (including the time zone tests run in
 - **Automated tests and CI**: 42 tests on the core logic, regression tests for real bugs, and checks on every push
 - **Resilience to flaky APIs**: retries with exponential backoff, isolating failures per song, and separating "failed" from "not found"
 - **Race conditions in search-as-you-type**: debouncing plus cancelling stale requests with `AbortController`
+- **Crowdsourcing what setlist.fm misses**: shared additions per show, with privacy and null-safe SQL
 - **A recommender system**: explicit and implicit signals, weighted similarity scoring, explainable reasons, and a hold-out evaluation
 - **A crowdsourced match table with privacy**: votes hidden by RLS, totals exposed through a security definer function, and a tie-aware winner picked with SQL window functions
 - **Database security with Row Level Security**: why a public key is safe when Postgres enforces per-user access rules

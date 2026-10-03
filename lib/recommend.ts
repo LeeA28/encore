@@ -22,7 +22,18 @@ export type ArtistTaste = {
 
 export type TasteProfile = Map<string, ArtistTaste>; // keyed by normalized artist name
 
-export type SimilarArtist = { name: string; match: number }; // match: similarity from 0 to 1
+export type SimilarArtist = { name: string; match: number; mbid?: string }; // match: similarity from 0 to 1
+
+// Artists to leave out of recommendations: members of your top bands (whose solo music you likely know)
+export type Exclusions = { ids: Set<string>; names: Set<string> };
+
+// Pure: turns each top band's member list into a quick lookup by MusicBrainz ID and by name.
+// IDs are the reliable way to match (some members release music under a different name),
+// and names are the fallback when an artist has no ID.
+export function membersToExclude(members: Record<string, { id: string; name: string }[]>): Exclusions {
+  const all = Object.values(members).flat();
+  return { ids: new Set(all.map((m) => m.id)), names: new Set(all.map((m) => normalize(m.name))) };
+}
 
 export type Recommendation = {
   artist: string;
@@ -91,16 +102,20 @@ export function pickSeeds(profile: TasteProfile, count = 8): ArtistTaste[] {
 export function scoreCandidates(
   profile: TasteProfile,
   similarBySeed: Record<string, SimilarArtist[]>, // keyed by the seed's display name
-  limit = 10
+  limit = 10,
+  exclude: Exclusions = { ids: new Set(), names: new Set() }
 ): Recommendation[] {
   const candidates = new Map<string, Recommendation>();
 
   for (const [seedName, similar] of Object.entries(similarBySeed)) {
     const seed = profile.get(normalize(seedName));
     if (!seed) continue;
-    for (const { name, match } of similar) {
+    for (const { name, match, mbid } of similar) {
       const key = normalize(name);
       if (profile.has(key)) continue; // you've already seen or ranked this artist
+      // A member of one of your top bands (e.g. a 5SOS member's solo music): not much of a discovery.
+      // (The other way around is allowed: if a top artist is a solo artist from a band, the band can be suggested.)
+      if ((mbid && exclude.ids.has(mbid)) || exclude.names.has(key)) continue;
       const points = seed.score * match;
       const entry = candidates.get(key) ?? { artist: name, score: 0, because: seed, contribution: 0 };
       entry.score += points;
