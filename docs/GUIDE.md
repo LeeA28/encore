@@ -1148,6 +1148,28 @@ vitest.config.mts            Test settings (including the time zone tests run in
 
 ---
 
+## Step 27: Medleys of covers, and Spotify's invite-only beta
+
+### Medleys of covers
+
+- Bruno Mars played "Oh Girl / I Miss You / You Are Everything / I Want to Be Your Man," a medley of four covers. After splitting, each part was searched with Bruno Mars as the artist, and none were found
+- setlist.fm does list the original artists, but in a free-text note, not a structured field:
+  `"info": "Cover of (in order): The Chi-Lites, Harold Melvin & The BlueNotes, The Stylistics, Roger Troutman"`
+- Before writing any code, the actual API response was checked (with `curl.exe` and the setlist ID), since the website's display didn't say where the data lived
+- `parseCoverInfo` reads the artist list from the note, and `coverArtists` pairs them with the medley's parts in order (stored as `coverOfEach`), but only when the counts match. A single cover artist applies to every part
+- `countSongs` gives each split part its own `coverOf`, so matching searches each song by its original artist, as it already did for regular covers
+- **A limitation the tests uncovered**: artist names can contain commas. "Earth, Wind & Fire" reads as two artists, which matches a two-song medley, so the artists get paired anyway. It's tolerable because matching only auto-accepts a track whose artist really matches on Spotify: a wrong pairing can make a song "not found," never pick the wrong song. The test suite documents this behavior on purpose
+- **Lenient artist names**: setlist.fm wrote "The BlueNotes," Spotify has "The Blue Notes." Matching now compares artist names with spaces and punctuation removed, and "&" treated as "and"
+- Saved concerts keep the data from when they were added, so concerts added before this change need to be removed and re-added to pick up the artists
+
+### Spotify's invite-only beta
+
+- In Spotify's development mode, only up to 5 Spotify accounts invited in the app's User Management can use Spotify features (making playlists, adding songs from Spotify)
+- Everyone else can still use the rest of Encore. When they try a Spotify feature, they now see a plain explanation ("Spotify features are in a limited beta...") instead of a developer-facing message
+- Lifting the limit requires Spotify's extended quota, which currently requires an organization with a very large user base
+
+---
+
 ## Things to test and play with
 
 - **Search**
@@ -1225,28 +1247,3 @@ vitest.config.mts            Test settings (including the time zone tests run in
 - **Phase 4: the AI agent**
   - Finds songs that normal matching missed, with the user confirming every suggestion
   - Python/Strands vs. TypeScript decision still to be made
-
----
-
-## Interview talking points
-
-- **The client/server split**: why the setlist.fm key lives only in an API route
-- **Deriving vs. storing data**: song counts are calculated from concerts rather than saved, so they can never go out of sync
-- **Choosing tiers over pairwise ranking, using math**: any pairwise method needs at least log₂(n!) comparisons (about 525 for 100 songs), while tiers need n decisions
-- **Drag and drop across multiple lists**: a temporary drag state that's only saved on drop, plus accessibility through keyboard sensors
-- **OAuth done securely**: the authorization code flow, CSRF protection with `state`, httpOnly cookies, and automatic token refresh
-- **Song matching with a scoring system**: multiple search strategies, a score for title, artist, and version, automatic thresholds, and a measured match rate
-- **Versioned database migrations and generated types**: a reproducible schema, and typos caught at compile time
-- **Automated tests and CI**: 42 tests on the core logic, regression tests for real bugs, and checks on every push
-- **Resilience to flaky APIs**: retries with exponential backoff, isolating failures per song, and separating "failed" from "not found"
-- **Race conditions in search-as-you-type**: debouncing plus cancelling stale requests with `AbortController`
-- **Crowdsourcing what setlist.fm misses**: shared additions per show, with privacy and null-safe SQL
-- **A recommender system**: explicit and implicit signals, weighted similarity scoring, explainable reasons, and a hold-out evaluation
-- **A crowdsourced match table with privacy**: votes hidden by RLS, totals exposed through a security definer function, and a tie-aware winner picked with SQL window functions
-- **Database security with Row Level Security**: why a public key is safe when Postgres enforces per-user access rules
-- **Designing an idempotent data migration**: merging guest data safely even when it runs twice
-- **Optimistic updates with debounced saves**, plus flushing pending saves before logout
-- **Debugging a drag-and-drop feedback loop**: layout shifts re-triggering moves, fixed by freezing the drop target for one animation frame
-- **Deduplicating messy music catalog data**: filtering release types, cleaning version labels with regular expressions, and letting the original release win
-- **Working within API limits**: 1,440 requests/day shaped the decision to store setlist snapshots
-- **Text normalization for matching**: merging near-duplicate song names, and its limitations

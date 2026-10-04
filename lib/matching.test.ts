@@ -41,6 +41,14 @@ describe("scoreTrack", () => {
   });
 });
 
+describe("lenient artist names", () => {
+  it("matches small spelling differences between setlist.fm and Spotify", () => {
+    // setlist.fm wrote "BlueNotes"; Spotify has "Blue Notes"
+    const song = { key: "k", name: "I Miss You", artist: "Bruno Mars", coverOf: "Harold Melvin & The BlueNotes" };
+    expect(scoreTrack(song, track("I Miss You", "Harold Melvin & The Blue Notes"))).toBeGreaterThanOrEqual(GOOD_SCORE);
+  });
+});
+
 describe("buildQueries", () => {
   it("searches the performer, then the original artist for covers, then loosely", () => {
     const queries = buildQueries({ key: "k", name: "Song", artist: "Band", coverOf: "Original" });

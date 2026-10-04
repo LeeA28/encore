@@ -10,6 +10,7 @@ export type SetlistFmSong = {
   name: string;
   tape?: boolean; // "?" means optional: this field may be missing
   cover?: { name: string };
+  info?: string; // free-text notes, like "Cover of (in order): The Chi-Lites, The Stylistics" for a medley of covers
 };
 
 export type SetlistFmSetlist = {

@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "Spotify didn't allow creating the playlist. Check that your account is in the app's User Management list, and that you approved playlist access when connecting (try disconnecting and connecting Spotify again).",
+            "Spotify didn't allow creating the playlist. Spotify features are in a limited beta, so only invited Spotify accounts can make playlists right now. If you were invited, try disconnecting and connecting Spotify again.",
         },
         { status: 403 }
       );

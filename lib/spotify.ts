@@ -79,11 +79,13 @@ export async function spotifyGet<T>(pathOrUrl: string, body?: unknown, method?: 
 
     if (res.status === 401) throw new SpotifyError("Your Spotify login expired. Connect again.", 401);
     if (res.status === 403) {
-      throw new SpotifyError(
-        "Spotify refused this request. In development mode, your Spotify account must be added to the app's User Management list (and the app owner needs Premium).",
-        403
-      );
-    }
+    // In Spotify's development mode, only Spotify accounts invited in the app's User Management (up to 5)
+    // can use it; anyone else gets 403. Written for users, since that's who will see it.
+    throw new SpotifyError(
+      "Spotify features are in a limited beta, so only invited Spotify accounts can use them right now. Everything else in Encore works without Spotify.",
+      403
+    );
+  }
     if (res.status === 429) {
       throw new SpotifyError("Too many requests to Spotify. Wait a minute and try again.", 429);
     }

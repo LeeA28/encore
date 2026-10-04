@@ -1,7 +1,7 @@
 // Tests for converting setlist.fm data and formatting dates (lib/concerts.ts)
 
 import { describe, expect, it } from "vitest";
-import { formatCity, formatDate, toConcert, toIsoDate } from "./concerts";
+import { coverArtists, formatCity, formatDate, parseCoverInfo, toConcert, toIsoDate } from "./concerts";
 import type { SetlistFmSetlist } from "./setlistfm";
 
 describe("toIsoDate", () => {
@@ -49,5 +49,46 @@ describe("toConcert", () => {
     expect(concert.date).toBe("2024-07-02");
     expect(formatCity(concert)).toBe("Toronto, Canada");
     expect(concert.tour).toBe("Big Tour");
+  });
+});
+
+describe("medleys of covers", () => {
+  // Regression test: this exact Bruno Mars entry was searched as "Oh Girl Bruno Mars" and so on,
+  // instead of by each song's original artist
+  const brunoMedley = {
+    name: "Oh Girl / I Miss You / You Are Everything / I Want to Be Your Man",
+    info: "Cover of (in order): The Chi-Lites, Harold Melvin & The BlueNotes, The Stylistics, Roger Troutman",
+  };
+
+  it("reads the original artists from setlist.fm's notes", () => {
+    expect(parseCoverInfo(brunoMedley.info)).toEqual([
+      "The Chi-Lites",
+      "Harold Melvin & The BlueNotes",
+      "The Stylistics",
+      "Roger Troutman",
+    ]);
+    expect(parseCoverInfo("Acoustic version")).toEqual([]);
+  });
+
+  it("pairs each medley part with its artist, in order", () => {
+    expect(coverArtists(brunoMedley).coverOfEach?.[1]).toBe("Harold Melvin & The BlueNotes");
+  });
+
+  it("leaves the artists off when the counts don't match, instead of guessing", () => {
+    const result = coverArtists({ name: "Song A / Song B", info: "Cover of (in order): Band 1, Band 2, Band 3" });
+    expect(result).toEqual({});
+  });
+
+  // A known limitation, written down as a test: a comma inside one artist's name can fool the count.
+  // "Earth, Wind & Fire" reads as 2 artists, which matches a 2-song medley, so they're paired anyway.
+  // It's safe because matching only auto-accepts a track when its artist really matches on Spotify:
+  // a wrongly paired artist can make a song "not found", but never the wrong song.
+  it("can be fooled by a comma inside an artist's name (known limitation)", () => {
+    const result = coverArtists({ name: "Song A / Song B", info: "Cover of (in order): Earth, Wind & Fire" });
+    expect(result.coverOfEach).toEqual(["Earth", "Wind & Fire"]);
+  });
+
+  it("applies a single cover artist to the whole medley", () => {
+    expect(coverArtists({ name: "Song A / Song B", cover: { name: "Some Band" } })).toEqual({ coverOf: "Some Band" });
   });
 });

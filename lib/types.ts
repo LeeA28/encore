@@ -4,6 +4,7 @@
 export type Song = {
   name: string;
   coverOf?: string; // the original artist, only if this song was a cover
+  coverOfEach?: string[]; // for a medley of covers: each part's original artist, in order
   addedByYou?: boolean; // added by the user, because setlist.fm's setlist was missing it (e.g. a secret song)
   spotifyId?: string; // for songs added from Spotify: the exact track, so it never needs matching
 };

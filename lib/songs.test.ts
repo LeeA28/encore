@@ -156,3 +156,14 @@ describe("countSongs with added songs", () => {
     expect(songs.find((s) => s.name === "This / That")?.spotifyId).toBe("t1");
   });
 });
+
+describe("countSongs with a medley of covers", () => {
+  it("gives each part of the medley its own original artist", () => {
+    const show: Concert = {
+      ...concert("a", "Bruno Mars", []),
+      songs: [{ name: "Oh Girl / I Miss You", coverOfEach: ["The Chi-Lites", "Harold Melvin & The BlueNotes"] }],
+    };
+    const covers = Object.fromEntries(countSongs([show]).map((s) => [s.name, s.coverOf]));
+    expect(covers).toEqual({ "Oh Girl": "The Chi-Lites", "I Miss You": "Harold Melvin & The BlueNotes" });
+  });
+});

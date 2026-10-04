@@ -35,6 +35,12 @@ export function buildQueries(song: SongToMatch): string[] {
   return queries;
 }
 
+// Compares artist names leniently: ignoring spaces, punctuation, and "&" vs "and", so small spelling
+// differences between setlist.fm and Spotify still match ("The BlueNotes" = "The Blue Notes")
+function compactArtist(name: string): string {
+  return normalize(name).replace(/&/g, "and").replace(/[^\p{L}\p{N}]/gu, "");
+}
+
 // How well does this Spotify track fit the song? Higher is better; 0 means "not this song".
 export function scoreTrack(song: SongToMatch, track: Pick<SpotifyTrack, "name" | "artists">): number {
   const wanted = normalize(cleanTitle(song.name));
@@ -45,9 +51,9 @@ export function scoreTrack(song: SongToMatch, track: Pick<SpotifyTrack, "name" |
   else if (found.startsWith(wanted) || wanted.startsWith(found)) score = 20; // e.g. "Song" vs "Song, Pt. 1"
   else return 0; // different title: never the right song
 
-  const artists = track.artists.map((a) => normalize(a.name));
-  if (artists.includes(normalize(song.artist))) score += 40; // the artist you saw
-  else if (song.coverOf && artists.includes(normalize(song.coverOf))) score += 30; // the original artist
+  const artists = track.artists.map((a) => compactArtist(a.name));
+  if (artists.includes(compactArtist(song.artist))) score += 40; // the artist you saw
+  else if (song.coverOf && artists.includes(compactArtist(song.coverOf))) score += 30; // the original artist
 
   // A live/remix/karaoke version, when the song itself isn't one: less likely to be what you want
   if (UNWANTED_VERSION.test(track.name) && !UNWANTED_VERSION.test(song.name)) score -= 30;

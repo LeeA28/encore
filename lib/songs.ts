@@ -38,8 +38,11 @@ export function countSongs(concerts: Concert[]): SongCount[] {
   for (const concert of concerts) {
     // Split medleys here (not when saving concerts), so concerts saved earlier benefit too.
     // Songs you added yourself are never split: you typed or picked exactly one song.
+    // Each part of a medley of covers gets its own original artist (coverOfEach), if setlist.fm listed them.
     const songs = concert.songs.flatMap((song) =>
-      song.addedByYou ? [song] : splitMedley(song.name).map((name) => ({ ...song, name }))
+      song.addedByYou
+        ? [song]
+        : splitMedley(song.name).map((name, i) => ({ ...song, name, coverOf: song.coverOfEach?.[i] ?? song.coverOf }))
     );
     for (const song of songs) {
       const key = songKey(concert.artist, song.name);
