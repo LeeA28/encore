@@ -1124,6 +1124,30 @@ vitest.config.mts            Test settings (including the time zone tests run in
 
 ---
 
+## Step 26: Deploying (Vercel, with a separate production database)
+
+### Two Supabase projects
+
+- **Development** (the original project): used by `npm run dev` on your computer, for building and testing
+- **Production** (a new project): used only by the live site, so mistakes while developing can never touch real users' data
+- Both get the same tables from the same migrations. New migrations are tried on development first, then pushed to production
+- The CLI talks to one project at a time: `npx supabase link --project-ref <ref>` switches which one `npm run db:push` and `npm run db:types` use
+- Each project has its own settings (email confirmation, SMTP, password rules, URLs), which aren't part of migrations, so they're set by hand in each
+- Free projects pause after about a week without activity; visiting the site keeps it awake
+
+### Vercel
+
+- Vercel builds and hosts the site straight from GitHub: every push to `main` deploys automatically
+- Environment variables are entered in Vercel's settings, since `.env.local` never leaves your computer. The production ones point at the production Supabase project and the live address
+- `NEXT_PUBLIC_` variables are written into the browser code **when the site is built**, so changing them requires a redeploy
+
+### Search caching
+
+- setlist.fm searches are cached on the server for an hour (`next: { revalidate: 3600 }` in `lib/setlistfm.ts`), shared by every user. The daily limit of 1,440 requests is for the whole app, so this matters most once real people use it
+- One hour balances freshness (new setlists appear soon) against saving requests
+
+---
+
 ## Things to test and play with
 
 - **Search**
@@ -1182,7 +1206,7 @@ vitest.config.mts            Test settings (including the time zone tests run in
 - If the same account is open in two tabs, the last save wins (changes in one tab don't appear in the other until refresh)
 - Search needs an artist name. You can't search by venue or date alone
 - Playlists are always new (updating an existing playlist isn't supported yet), and always private
-- Search-as-you-type uses more of setlist.fm's 1,440 daily requests than a search button did
+- Search-as-you-type uses more of setlist.fm's 1,440 daily requests than a search button did (identical searches are cached for an hour)
 - Search results are 20 per page, newest first, so older shows may need "Load more" or filters
 - Name normalizing catches small differences but not bigger ones like "Pt. 2" vs "Part 2"
 - Discographies are capped at 60 releases, so very prolific artists may be missing some older songs

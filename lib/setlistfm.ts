@@ -65,6 +65,10 @@ export async function searchSetlists(options: SearchOptions): Promise<SearchResp
       "x-api-key": apiKey, // proves who we are
       Accept: "application/json", // asks for JSON (setlist.fm sends XML by default)
     },
+    // Search caching: the same search (same artist, filters, and page) is answered from the server's
+    // cache for an hour, for every user. setlist.fm allows 1,440 requests a day for the whole app,
+    // and popular searches would otherwise use them up. An hour keeps new setlists showing up promptly.
+    next: { revalidate: 60 * 60 },
   });
 
   // setlist.fm uses 404 to mean "no results", so treat that as an empty list, not an error
