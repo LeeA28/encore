@@ -207,6 +207,7 @@ function EncoreAppContent() {
           tab={tab === "account" && !user ? "concerts" : tab}
           spotifyConnected={spotifyConnected}
           flushRef={flushRef}
+          onChangeTab={setTab}
         />
       )}
 

@@ -111,6 +111,7 @@ components/
   ThemeToggle.tsx            The sun/moon light/dark mode button (kept in sync across both header layouts)
   HeaderMenu.tsx             The ☰ menu on narrow screens: Spotify, Account, Log in/out
   DiscoverTab.tsx            The discover tab: recommended artists, with reasons
+  SavedListEditor.tsx        Creating and editing saved lists: a name, plus concerts picked from Your concerts
   AddSongPanel.tsx           "+ Add a song" on your concerts: search Spotify or type a song setlist.fm missed
   ConfirmDialog.tsx          Encore's "are you sure?" pop-up, used through useConfirm()
   AccountTab.tsx             The Account tab: your details and changing your password
@@ -147,6 +148,7 @@ lib/
   recommend.ts               Pure: taste profile, candidate scoring, reasons, and skipping band members
   musicbrainz.ts             Server-only: band members, other performing names, and aliases (rate-limited, cached a week)
   lastfm.ts                  Server-only: similar artists and MusicBrainz IDs from Last.fm (cached a day)
+  savedLists.ts              Pure: a saved list's concerts, and removing a concert from every list
   concertAdditions.ts        Shared additions: songs others at the same show added, and keeping yours in sync
   sharedMatches.ts           The shared match table: reading shared matches, saving your votes, and which match wins
   database.types.ts          Generated from the database: every table and column's type (npm run db:types)
@@ -1167,6 +1169,37 @@ vitest.config.mts            Test settings (including the time zone tests run in
 - In Spotify's development mode, only up to 5 Spotify accounts invited in the app's User Management can use Spotify features (making playlists, adding songs from Spotify)
 - Everyone else can still use the rest of Encore. When they try a Spotify feature, they now see a plain explanation ("Spotify features are in a limited beta...") instead of a developer-facing message
 - Lifting the limit requires Spotify's extended quota, which currently requires an organization with a very large user base
+
+---
+
+## Step 28: Saved lists
+
+### What they are
+
+- A **saved list** is a named group of concerts you hand-pick from Your concerts, like "2026," "2025," or "every 5SOS show"
+- Lists can overlap (one concert can be in several lists), and each list has its own:
+  - **Song counts** (Songs tab, using the list switcher at the top)
+  - **Playlist** (named after the list by default)
+  - **Tier list** (Rank tab → Saved lists), starting unranked and separate from every other tier list
+- "Rank this list →" in the Songs tab jumps straight to that list's tier list
+- Saved list rankings don't count toward discover, since the same song could be ranked in several lists and get counted more than once
+
+### Designing it: three possible meanings, one chosen
+
+- "Save a list of songs" could have meant three things, and each is stored differently:
+  - A **saved filter** ("all my 2026 concerts") stores a *rule*, and grows as matching concerts are added
+  - A **snapshot** stores a *copy of the songs*, frozen when saved
+  - A **group of concerts** stores the *concert IDs*, and works out the songs whenever it's viewed
+- Encore uses the third: a list is just its concerts, so it always shows their current songs (adding a secret song to a concert shows up in every list that includes it), and nothing joins a list unless you add it
+- Settling this before building avoided building the wrong thing. The lesson: when a feature can mean more than one thing, pin down the meaning first, since it decides how the data is stored
+
+### How it's built
+
+- **A new migration** (`20261005000000_saved_lists.sql`): a `saved_lists` table with each list's name, its concert IDs (a Postgres `text[]` array), and its tiers, protected by the same Row Level Security as the other tables
+- **Songs are derived, not stored**: `concertsInList` picks out the list's concerts (newest first, skipping any that no longer exist), and `countSongs` does the rest, so medleys, covers, and added songs work exactly as they do everywhere else
+- **Removing a concert** from Your concerts also removes it from every list (`removeConcertFromLists`, tested), saving only the lists that changed
+- **Guests** get saved lists in the browser, and they're moved into the account on sign-up with the same IDs, so the merge stays safe to repeat
+- **Jumping to the Rank tab**: the Songs tab hands the list's ID to the Workspace, which switches tabs; the Rank tab reads it once when it opens (`takeInitialList`), then it's cleared, so opening the Rank tab normally later starts on the usual view
 
 ---
 

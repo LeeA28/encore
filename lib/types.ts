@@ -60,6 +60,15 @@ export type SavedPlaylist = {
   createdAt: string;
 };
 
+// A saved list: a named group of concerts you picked, with its own tier list.
+// Its songs are always worked out from its concerts, so they stay up to date.
+export type SavedList = {
+  id: string;
+  name: string;
+  concertIds: string[]; // setlist.fm ids of the concerts in this list
+  tiers: Record<"S" | "A" | "B" | "C" | "D", string[]>;
+};
+
 // A user-made list of songs to rank (a discography, some albums, handpicked songs...)
 export type CustomList = {
   id: string;

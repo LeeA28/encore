@@ -8,14 +8,15 @@
 
 Pick the concerts you've been to, and Encore pulls each show's setlist, counts how many times you've heard every song, lets you rank them in an S–D tier list, recommends artists you might love, and builds a Spotify playlist of everything you've heard live.
 
-![Your concerts](/concerts.png)
+![Your concerts](docs/screenshots/concerts.png)
 
 ## Features
 
 - **Concert search** across setlist.fm's crowd-sourced setlists, filtered by year, city, and country, with results as you type
 - **Song counts**: every song you've heard live, from most to least heard, with medleys split into their individual songs
 - **Missing songs**: add songs a setlist missed (like a tour's daily secret song), and see what other Encore users at the same show added
-- **Tier lists**: drag-and-drop S/A/B/C/D rankings for songs heard live, plus custom lists built from any artist's discography or albums
+- **Saved lists**: group concerts however you like ("2026", "every 5SOS show"), each with its own song counts, playlist, and tier list
+- **Tier lists**: drag-and-drop S/A/B/C/D rankings for songs heard live, saved lists, and custom lists built from any artist's discography or albums
 - **Spotify playlists**: automatic song matching with a review screen to change, skip, or search for any match, then a playlist in your Spotify account
 - **Discover**: artist recommendations based on your rankings and the shows you've seen, with a reason for each
 - **Accounts**: email sign-up with confirmation, password reset, and your data saved across devices (or in the browser, as a guest)
@@ -23,11 +24,11 @@ Pick the concerts you've been to, and Encore pulls each show's setlist, counts h
 
 | Review your matches | The finished playlist |
 | --- | --- |
-| ![Playlist review](/playlist-review.png) | ![Spotify playlist](/spotify-playlist.png) |
+| ![Playlist review](docs/screenshots/playlist-review.png) | ![Spotify playlist](docs/screenshots/spotify-playlist.png) |
 
 | Tier list | Discover |
 | --- | --- |
-| ![Tier list](/tiers.png) | ![Discover](/discover.png) |
+| ![Tier list](docs/screenshots/tiers.png) | ![Discover](docs/screenshots/discover.png) |
 
 ## How it works
 
@@ -78,7 +79,7 @@ setlist.fm allows 1,440 requests a day for the whole app, and MusicBrainz 1 per 
 - **Frontend**: Next.js 16 (App Router), React, TypeScript, CSS with design tokens, dnd-kit for drag and drop
 - **Backend**: Next.js API routes, Supabase (Postgres, Auth, Row Level Security)
 - **APIs**: setlist.fm, Spotify Web API, Last.fm, MusicBrainz
-- **Testing and CI**: Vitest (76 tests on the core logic, including regression tests for real bugs), GitHub Actions running lint, type checking, and tests on every push
+- **Testing and CI**: Vitest (78 tests on the core logic, including regression tests for real bugs), GitHub Actions running lint, type checking, and tests on every push
 - **Database workflow**: versioned migrations and generated TypeScript types with the Supabase CLI, with separate development and production projects
 - **Hosting**: Vercel
 

@@ -135,6 +135,36 @@ export type Database = {
         };
         Relationships: [];
       };
+      saved_lists: {
+        Row: {
+          concert_ids: string[];
+          created_at: string;
+          id: string;
+          name: string;
+          tiers: Json;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          concert_ids?: string[];
+          created_at?: string;
+          id?: string;
+          name: string;
+          tiers?: Json;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Update: {
+          concert_ids?: string[];
+          created_at?: string;
+          id?: string;
+          name?: string;
+          tiers?: Json;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       song_additions: {
         Row: {
           created_at: string;

@@ -4,7 +4,7 @@
 // EncoreApp gives this component a different `key` for each user (or "guest"), so logging in or out
 // re-creates it from scratch, with that mode's data.
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { User } from "@supabase/supabase-js";
 import { countSongs } from "@/lib/songs";
 import { useEncoreData } from "@/lib/useEncoreData";
@@ -22,10 +22,24 @@ type Props = {
   spotifyConnected: boolean | null;
   // EncoreApp keeps a reference to our "save now" function, to call it right before logging out
   flushRef: React.RefObject<(() => void) | null>;
+  onChangeTab: (tab: Tab) => void;
 };
 
-export default function Workspace({ user, tab, spotifyConnected, flushRef }: Props) {
+export default function Workspace({ user, tab, spotifyConnected, flushRef, onChangeTab }: Props) {
   const data = useEncoreData(user);
+
+  // "Rank this list →" in the Songs tab: remember which saved list to open, then switch to the Rank tab.
+  // The Rank tab reads it once when it opens (takeInitialList), then it's cleared.
+  const listToRank = useRef<string | null>(null);
+  function rankList(id: string) {
+    listToRank.current = id;
+    onChangeTab("rank");
+  }
+  function takeInitialList() {
+    const id = listToRank.current;
+    listToRank.current = null;
+    return id;
+  }
 
   useEffect(() => {
     flushRef.current = data.flush;
@@ -69,15 +83,22 @@ export default function Workspace({ user, tab, spotifyConnected, flushRef }: Pro
       )}
       {tab === "songs" && (
         <SongList
+          concerts={data.concerts}
           songs={songs}
-          concertCount={data.concerts.length}
           playlists={data.playlists}
+          savedLists={data.savedLists}
+          onCreateList={data.createSavedList}
+          onUpdateList={data.updateSavedList}
+          onDeleteList={data.deleteSavedList}
+          onRankList={rankList}
           onPlaylistCreated={data.addPlaylist}
           onPlaylistRemoved={data.removePlaylist}
           spotifyConnected={spotifyConnected}
         />
       )}
-      {tab === "rank" && <RankTab songs={songs} data={data} spotifyConnected={spotifyConnected} />}
+      {tab === "rank" && (
+        <RankTab songs={songs} data={data} spotifyConnected={spotifyConnected} takeInitialList={takeInitialList} />
+      )}
       {tab === "discover" && <DiscoverTab songs={songs} data={data} />}
       {tab === "account" && user && <AccountTab user={user} />}
     </main>

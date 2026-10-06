@@ -653,6 +653,39 @@ select {
   color: #111111;
 }
 
+/* Switching between "All songs" and saved lists in the Songs tab */
+.list-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.list-switcher button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--card-muted);
+  border-radius: var(--radius-pill);
+  padding: 7px 14px;
+  cursor: pointer;
+}
+
+.list-switcher button.active {
+  background: #ffffff;
+  color: #111111;
+  border-color: #ffffff;
+}
+
+.list-switcher button.new-list {
+  border-style: dashed;
+}
+
+@media (pointer: coarse) {
+  .list-switcher button {
+    min-height: 44px;
+  }
+}
+
 /* ---------- Concerts ---------- */
 
 .concert-grid {

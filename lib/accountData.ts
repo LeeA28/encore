@@ -1,7 +1,7 @@
 // Account mode: reading and saving a logged-in user's data in Supabase (Postgres).
 // Row Level Security in the database makes sure each user can only reach their own rows.
 
-import type { Concert, CustomList, SavedPlaylist, Song } from "./types";
+import type { Concert, CustomList, SavedList, SavedPlaylist, Song } from "./types";
 import { emptyTiers, type Tiers } from "./tiers";
 import { tiersAreEmpty, type EncoreData } from "./guestData";
 import type { EncoreSupabase, Insert, Json, Row } from "./db";
@@ -85,6 +85,21 @@ function rowToPlaylist(r: Row<"playlists">): SavedPlaylist {
   };
 }
 
+function savedListToRow(userId: string, l: SavedList): Insert<"saved_lists"> {
+  return {
+    id: l.id,
+    user_id: userId,
+    name: l.name,
+    concert_ids: l.concertIds,
+    tiers: l.tiers as unknown as Json,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function rowToSavedList(r: Pick<Row<"saved_lists">, "id" | "name" | "concert_ids" | "tiers">): SavedList {
+  return { id: r.id, name: r.name, concertIds: r.concert_ids, tiers: r.tiers as unknown as SavedList["tiers"] };
+}
+
 // Supabase returns errors instead of throwing them; this turns them into thrown errors
 function check<T>(result: { data: T; error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message);
@@ -94,12 +109,13 @@ function check<T>(result: { data: T; error: { message: string } | null }): T {
 // ---- Reading ----
 
 export async function loadAccountData(supabase: EncoreSupabase): Promise<EncoreData> {
-  // Four requests at the same time (Promise.all), instead of one after another
-  const [concertRows, tiersRow, listRows, playlistRows] = await Promise.all([
+  // Five requests at the same time (Promise.all), instead of one after another
+  const [concertRows, tiersRow, listRows, playlistRows, savedListRows] = await Promise.all([
     supabase.from("concerts").select("*").order("added_at"),
     supabase.from("live_tiers").select("tiers").maybeSingle(), // maybeSingle: one row, or null if none
     supabase.from("custom_lists").select("id, name, items, tiers").order("created_at"),
     supabase.from("playlists").select("*").order("created_at", { ascending: false }), // newest first
+    supabase.from("saved_lists").select("id, name, concert_ids, tiers").order("created_at"),
   ]);
 
   // No more "as ConcertRow[]": Supabase knows each table's row type, so the results are already typed
@@ -109,6 +125,7 @@ export async function loadAccountData(supabase: EncoreSupabase): Promise<EncoreD
     liveTiers: (check(tiersRow)?.tiers as unknown as Tiers | undefined) ?? emptyTiers(),
     customLists: (check(listRows) ?? []).map(rowToList),
     playlists: (check(playlistRows) ?? []).map(rowToPlaylist),
+    savedLists: (check(savedListRows) ?? []).map(rowToSavedList),
   };
 }
 
@@ -164,6 +181,14 @@ export async function savePlaylists(supabase: EncoreSupabase, userId: string, pl
   );
 }
 
+export async function saveSavedList(supabase: EncoreSupabase, userId: string, list: SavedList) {
+  check(await supabase.from("saved_lists").upsert(savedListToRow(userId, list)));
+}
+
+export async function deleteSavedList(supabase: EncoreSupabase, listId: string) {
+  check(await supabase.from("saved_lists").delete().eq("id", listId));
+}
+
 export async function deletePlaylist(supabase: EncoreSupabase, userId: string, spotifyId: string) {
   check(await supabase.from("playlists").delete().eq("user_id", userId).eq("spotify_id", spotifyId));
 }
@@ -186,6 +211,11 @@ export async function mergeGuestData(
   }
 
   await savePlaylists(supabase, userId, guest.playlists);
+
+  // Saved lists: copied with the same ids, so running the merge twice can't duplicate them
+  if (guest.savedLists.length > 0) {
+    check(await supabase.from("saved_lists").upsert(guest.savedLists.map((l) => savedListToRow(userId, l))));
+  }
 
   if (guest.customLists.length > 0) {
     check(await supabase.from("custom_lists").upsert(guest.customLists.map((l) => listToRow(userId, l))));
