@@ -34,6 +34,7 @@ import {
   deletePlaylist,
   saveSavedList,
   deleteSavedList,
+  updatePlaylistRecord,
 } from "./accountData";
 import { deleteAdditions, diffAddedSongs, saveAdditions, syncAllAdditions } from "./concertAdditions";
 import { removeConcertFromLists } from "./savedLists";
@@ -219,6 +220,12 @@ export function useEncoreData(user: User | null) {
     if (user) save(() => savePlaylists(createClient(), user.id, [playlist]));
   }
 
+  // After "Update" replaced a playlist's songs: refresh its record (song count, date)
+  function updatePlaylist(playlist: SavedPlaylist) {
+    setPlaylists((prev) => prev.map((p) => (p.spotifyId === playlist.spotifyId ? playlist : p)));
+    if (user) save(() => updatePlaylistRecord(createClient(), user.id, playlist));
+  }
+
   // ---- Saved lists ----
 
   function createSavedList(name: string, concertIds: string[]): string {
@@ -268,6 +275,7 @@ export function useEncoreData(user: User | null) {
     playlists,
     addPlaylist,
     removePlaylist,
+    updatePlaylist,
     savedLists,
     createSavedList,
     updateSavedList,

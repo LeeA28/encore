@@ -6,7 +6,8 @@
 //  3. Create: makes the playlist in your Spotify account and gives you a link to it
 
 import { useEffect, useRef, useState } from "react";
-import type { SavedPlaylist, TrackMatch } from "@/lib/types";
+import type { PlaylistSource, SavedPlaylist, TrackMatch } from "@/lib/types";
+import { saveResume } from "@/lib/resumePlaylist";
 import type { SongToMatch } from "@/lib/matching";
 import { cacheMatches, getCachedMatches } from "@/lib/matchCache";
 import { fetchSharedMatches, resolveKnownMatch, saveMatchVotes } from "@/lib/sharedMatches";
@@ -32,7 +33,9 @@ type Props = {
   source: string; // e.g. "Songs heard live"
   spotifyConnected: boolean | null;
   returnTab: "songs" | "rank"; // where Spotify login should send you back to
-  onCreated: (playlist: SavedPlaylist) => void;
+  sourceRef: PlaylistSource; // exactly what this playlist is made from (saved, so it can be updated later)
+  updating?: SavedPlaylist; // set when updating an existing playlist instead of making a new one
+  onCreated: (playlist: SavedPlaylist) => void; // a new playlist was made, or an existing one was updated
   onClose: () => void;
 };
 
@@ -56,6 +59,8 @@ export default function PlaylistBuilder({
   source,
   spotifyConnected,
   returnTab,
+  sourceRef,
+  updating,
   onCreated,
   onClose,
 }: Props) {
@@ -195,11 +200,15 @@ export default function PlaylistBuilder({
     setPhase("creating");
     setError("");
     try {
-      const playlist = await postJson<{ id: string; url: string }>("/api/spotify/playlists", {
-        name: name.trim() || defaultName,
-        description: `Made with Encore from ${source.toLowerCase()}.`,
-        trackIds,
-      });
+      // Updating replaces an existing playlist's songs (same playlist, same link); otherwise make a new one
+      const playlist = updating
+        ? (await postJson("/api/spotify/playlists/replace", { id: updating.spotifyId, trackIds }),
+          { id: updating.spotifyId, url: updating.url })
+        : await postJson<{ id: string; url: string }>("/api/spotify/playlists", {
+            name: name.trim() || defaultName,
+            description: `Made with Encore from ${source.toLowerCase()}.`,
+            trackIds,
+          });
 
       // Remember these matches (including any you changed), so next time they're instant
       cacheMatches(Object.fromEntries(included.map((r) => [r.song.key, r.match!])));
@@ -213,11 +222,12 @@ export default function PlaylistBuilder({
 
       onCreated({
         spotifyId: playlist.id,
-        name: name.trim() || defaultName,
+        name: updating ? updating.name : name.trim() || defaultName,
         url: playlist.url,
         trackCount: trackIds.length,
         source,
         createdAt: new Date().toISOString(),
+        sourceRef,
       });
       setCreatedUrl(playlist.url);
       setPhase("done");
@@ -235,7 +245,12 @@ export default function PlaylistBuilder({
       <>
         <p className="card-desc">To make a playlist, please connect your Spotify account.</p>
         {/* A normal link: Spotify login is a full visit to Spotify's site, which then sends you back to this tab */}
-        <a className="btn btn-spotify" href={`/api/spotify/login?returnTo=${returnTab}`}>
+        {/* Before leaving, note what was being made, so the builder reopens like this on return */}
+        <a
+          className="btn btn-spotify"
+          href={`/api/spotify/login?returnTo=${returnTab}`}
+          onClick={() => saveResume(sourceRef)}
+        >
           Connect Spotify
         </a>
       </>
@@ -256,7 +271,7 @@ export default function PlaylistBuilder({
     content = (
       <>
         <p className="card-desc">
-          Your playlist is ready, with {[...new Set(included.map((r) => r.match!.id))].length} songs.
+          Your playlist is {updating ? "updated" : "ready"}, with {[...new Set(included.map((r) => r.match!.id))].length} songs.
         </p>
         <div className="form-row">
           <a className="btn btn-spotify" href={createdUrl} target="_blank" rel="noreferrer">
@@ -282,7 +297,11 @@ export default function PlaylistBuilder({
         </div>
 
         <div className="form-row" style={{ marginBottom: 12 }}>
-          <input className="input grow" value={name} onChange={(e) => setName(e.target.value)} placeholder="Playlist name" />
+          {updating ? (
+            <span className="muted">Updating &quot;{updating.name}&quot; with its current songs</span>
+          ) : (
+            <input className="input grow" value={name} onChange={(e) => setName(e.target.value)} placeholder="Playlist name" />
+          )}
         </div>
 
         {/* Songs that need attention come first: not found (red), then couldn't check (amber) */}
@@ -347,7 +366,7 @@ export default function PlaylistBuilder({
         <div className="modal-sticky">
           <div className="card-header" style={{ justifyContent: "space-between", marginBottom: 0 }}>
             <h2 className="card-title" style={{ fontSize: 26 }}>
-              make a playlist
+              {updating ? "update playlist" : "make a playlist"}
             </h2>
             {phase !== "creating" && (
               <button className="btn btn-ghost btn-small" onClick={close}>
@@ -361,7 +380,11 @@ export default function PlaylistBuilder({
               onClick={create}
               disabled={phase === "creating" || included.length === 0}
             >
-              {phase === "creating" ? "Creating..." : `Create playlist (${included.length})`}
+              {phase === "creating"
+                ? updating
+                  ? "Updating..."
+                  : "Creating..."
+                : `${updating ? "Update playlist" : "Create playlist"} (${included.length})`}
             </button>
           )}
           {error && <p className="error" style={{ marginBottom: 0 }}>{error}</p>}

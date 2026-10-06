@@ -3,23 +3,37 @@
 // "Make a playlist" for a tier list: pick which tiers to include, then open the playlist builder.
 // Songs go in tier order (S first), keeping each tier's order from your dragging.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { RankItem, SavedPlaylist } from "@/lib/types";
 import { TIER_COLORS, TIER_NAMES, type TierName, type Tiers } from "@/lib/tiers";
+import { tierSongsForPlaylist } from "@/lib/playlistSources";
+import { clearResume, peekResume } from "@/lib/resumePlaylist";
 import PlaylistBuilder, { type PlaylistSong } from "./PlaylistBuilder";
 
 type Props = {
   items: RankItem[];
   tiers: Tiers;
   listName: string; // e.g. "Songs heard live" or a custom list's name
+  context: string; // which tier list this is: "live", "saved:<id>", or "custom:<id>"
   spotifyConnected: boolean | null;
   onCreated: (playlist: SavedPlaylist) => void;
 };
 
-export default function TierPlaylistButton({ items, tiers, listName, spotifyConnected, onCreated }: Props) {
+export default function TierPlaylistButton({ items, tiers, listName, context, spotifyConnected, onCreated }: Props) {
+  // Returning from connecting Spotify mid-playlist: reopen the builder with the same tiers ticked
+  const [resume] = useState(() => {
+    const r = peekResume();
+    return r?.kind === "tiers" && r.context === context ? r : null;
+  });
+  useEffect(() => {
+    if (resume) clearResume(); // only reopen once
+  }, [resume]);
+
   const [picking, setPicking] = useState(false);
-  const [picked, setPicked] = useState<TierName[]>(["S", "A"]);
-  const [building, setBuilding] = useState<PlaylistSong[] | null>(null);
+  const [picked, setPicked] = useState<TierName[]>(resume?.tiers ?? ["S", "A"]);
+  const [building, setBuilding] = useState<PlaylistSong[] | null>(() =>
+    resume ? tierSongsForPlaylist(items, tiers, resume.tiers) : null
+  );
 
   const itemsByKey = new Map(items.map((i) => [i.key, i]));
 
@@ -33,16 +47,7 @@ export default function TierPlaylistButton({ items, tiers, listName, spotifyConn
   );
 
   function start() {
-    setBuilding(
-      chosen.map((item) => ({
-        key: item.key,
-        name: item.name,
-        artist: item.artist,
-        coverOf: item.coverOf,
-        // Songs added from Spotify already know their track, so they skip matching
-        match: item.spotifyId ? { id: item.spotifyId, name: item.name, artist: item.artist, album: item.detail } : undefined,
-      }))
-    );
+    setBuilding(tierSongsForPlaylist(items, tiers, picked));
     setPicking(false);
   }
 
@@ -86,6 +91,7 @@ export default function TierPlaylistButton({ items, tiers, listName, spotifyConn
           source={`${tierLabel} tiers of ${listName}`}
           spotifyConnected={spotifyConnected}
           returnTab="rank"
+          sourceRef={{ kind: "tiers", context, tiers: TIER_NAMES.filter((t) => picked.includes(t)) }}
           onCreated={onCreated}
           onClose={() => setBuilding(null)}
         />

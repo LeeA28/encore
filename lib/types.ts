@@ -58,7 +58,14 @@ export type SavedPlaylist = {
   trackCount: number;
   source: string; // what it was made from, e.g. "Songs heard live" or "S + A tiers: Radiohead discography"
   createdAt: string;
+  sourceRef?: PlaylistSource; // exactly what it was made from, so it can be updated later (newer playlists only)
 };
+
+// Where a playlist's songs come from, precisely enough to rebuild the same song list later
+export type PlaylistSource =
+  | { kind: "songs"; listId: string } // the Songs tab: "all", or a saved list's id
+  | { kind: "tiers"; context: string; tiers: ("S" | "A" | "B" | "C" | "D")[] }; // chosen tiers of a tier list
+// A tier list's context: "live" (songs heard live), "saved:<id>" (a saved list), or "custom:<id>" (a custom list)
 
 // A saved list: a named group of concerts you picked, with its own tier list.
 // Its songs are always worked out from its concerts, so they stay up to date.

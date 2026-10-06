@@ -9,6 +9,7 @@ import type { EncoreDataApi } from "@/lib/useEncoreData";
 import TierBoard from "./TierBoard";
 import SpotifyAdder from "./SpotifyAdder";
 import TierPlaylistButton from "./TierPlaylistButton";
+import { peekResume } from "@/lib/resumePlaylist";
 import { useConfirm } from "./ConfirmDialog";
 
 type Props = {
@@ -18,7 +19,12 @@ type Props = {
 
 export default function CustomLists({ data, spotifyConnected }: Props) {
   const lists = data.customLists;
-  const [selectedId, setSelectedId] = useState<string>(lists[0]?.id ?? "");
+  // Returning from Spotify login mid-playlist on a custom list: open that list again
+  const [selectedId, setSelectedId] = useState<string>(() => {
+    const r = peekResume();
+    const resumed = r?.kind === "tiers" && r.context.startsWith("custom:") ? r.context.slice(7) : null;
+    return resumed ?? lists[0]?.id ?? "";
+  });
   const [newName, setNewName] = useState("");
   const confirm = useConfirm();
   // If the selected list was deleted (or none is picked yet), fall back to the first list
@@ -111,6 +117,7 @@ export default function CustomLists({ data, spotifyConnected }: Props) {
                 items={selected.items}
                 tiers={selected.tiers}
                 listName={selected.name}
+                context={`custom:${selected.id}`}
                 spotifyConnected={spotifyConnected}
                 onCreated={data.addPlaylist}
               />

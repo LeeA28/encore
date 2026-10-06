@@ -17,6 +17,8 @@ import {
   type SimilarArtist,
 } from "@/lib/recommend";
 import { SparkIcon } from "./Icons";
+import UpcomingShows from "./UpcomingShows";
+import FansAlsoSaw from "./FansAlsoSaw";
 
 type Props = { songs: SongCount[]; data: EncoreDataApi };
 
@@ -187,6 +189,10 @@ export default function DiscoverTab({ songs, data }: Props) {
               Last.fm
             </a>
           </p>
+
+          <FansAlsoSaw concertIds={data.concerts.map((c) => c.id)} profile={profile} />
+
+          {recommendations.length > 0 && <UpcomingShows artists={recommendations.map((r) => r.artist)} />}
         </>
       )}
     </section>

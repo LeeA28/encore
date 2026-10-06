@@ -18,9 +18,10 @@ type Props = {
   playlists: SavedPlaylist[];
   spotifyConnected: boolean | null;
   onRemove: (spotifyId: string) => void;
+  onUpdate: (playlist: SavedPlaylist) => void; // re-match and replace its songs with the current ones
 };
 
-export default function PlaylistList({ playlists, spotifyConnected, onRemove }: Props) {
+export default function PlaylistList({ playlists, spotifyConnected, onRemove, onUpdate }: Props) {
   const confirm = useConfirm();
   const [status, setStatus] = useState<Record<string, Status>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -116,6 +117,12 @@ export default function PlaylistList({ playlists, spotifyConnected, onRemove }: 
                   <a className="btn btn-ghost btn-small" href={p.url} target="_blank" rel="noreferrer">
                     Open ↗
                   </a>
+                )}
+                {/* Only playlists made after updating was added remember what they were made from */}
+                {!gone && p.sourceRef && spotifyConnected && (
+                  <button className="btn btn-ghost btn-small" onClick={() => onUpdate(p)}>
+                    Update
+                  </button>
                 )}
                 <button className="btn btn-ghost btn-small" onClick={() => remove(p)}>
                   Remove

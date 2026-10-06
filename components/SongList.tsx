@@ -3,10 +3,12 @@
 // The Songs tab: every song you've heard live, or just the songs from one of your saved lists
 // (named groups of concerts you picked, like "2026")
 
-import { useMemo, useState } from "react";
-import type { Concert, SavedList, SavedPlaylist, SongCount } from "@/lib/types";
-import { countSongs, groupByArtist } from "@/lib/songs";
+import { useEffect, useMemo, useState } from "react";
+import type { Concert, PlaylistSource, SavedList, SavedPlaylist, SongCount } from "@/lib/types";
+import { countSongs } from "@/lib/songs";
 import { concertsInList } from "@/lib/savedLists";
+import { songsForPlaylist, songsForSource, type SourceData } from "@/lib/playlistSources";
+import { clearResume, peekResume } from "@/lib/resumePlaylist";
 import PlaylistBuilder from "./PlaylistBuilder";
 import PlaylistList from "./PlaylistList";
 import SavedListEditor from "./SavedListEditor";
@@ -25,14 +27,40 @@ type Props = {
   onUpdateList: (id: string, change: (list: SavedList) => SavedList) => void;
   onDeleteList: (id: string) => void;
   onRankList: (id: string) => void; // opens this list's tier list in the Rank tab
+  sourceData: SourceData; // everything needed to rebuild a playlist's songs when updating it
+  onPlaylistUpdated: (playlist: SavedPlaylist) => void;
 };
 
 export default function SongList(props: Props) {
   const { concerts, playlists, spotifyConnected, savedLists } = props;
   const confirm = useConfirm();
-  const [selectedId, setSelectedId] = useState<string>("all"); // "all", or a saved list's id
+  // Returning from connecting Spotify mid-playlist: reopen the builder for the same list
+  const [resume] = useState(() => {
+    const r = peekResume();
+    return r?.kind === "songs" ? r : null;
+  });
+  useEffect(() => {
+    if (resume) clearResume(); // only reopen once
+  }, [resume]);
+
+  const [selectedId, setSelectedId] = useState<string>(resume?.listId ?? "all"); // "all", or a saved list's id
   const [editing, setEditing] = useState<"new" | "edit" | null>(null);
-  const [building, setBuilding] = useState(false);
+  const [building, setBuilding] = useState(resume !== null);
+  // "Update" on one of Your playlists: rebuild its songs from what it was made from
+  const [updating, setUpdating] = useState<{ playlist: SavedPlaylist; songs: ReturnType<typeof songsForPlaylist> } | null>(
+    null
+  );
+  const [updateError, setUpdateError] = useState("");
+
+  function startUpdate(playlist: SavedPlaylist) {
+    const songs = playlist.sourceRef ? songsForSource(playlist.sourceRef, props.sourceData) : null;
+    if (!songs) {
+      setUpdateError(`"${playlist.name}" can't be updated, since what it was made from no longer exists.`);
+      return;
+    }
+    setUpdateError("");
+    setUpdating({ playlist, songs });
+  }
 
   // If the selected list was deleted, fall back to all songs
   const selected = savedLists.find((l) => l.id === selectedId);
@@ -142,7 +170,15 @@ export default function SongList(props: Props) {
           </div>
 
           {!selected && playlists.length > 0 && (
-            <PlaylistList playlists={playlists} spotifyConnected={spotifyConnected} onRemove={props.onPlaylistRemoved} />
+            <>
+              <PlaylistList
+                playlists={playlists}
+                spotifyConnected={spotifyConnected}
+                onRemove={props.onPlaylistRemoved}
+                onUpdate={startUpdate}
+              />
+              {updateError && <p className="error">{updateError}</p>}
+            </>
           )}
 
           <h2 className="card-subtitle">{selected ? selected.name : "all songs"}</h2>
@@ -167,21 +203,28 @@ export default function SongList(props: Props) {
 
       {building && (
         <PlaylistBuilder
-          // Grouped by artist (artists ordered by their most-heard song), each artist's songs most heard first
-          songs={groupByArtist(songs).map((s) => ({
-            key: s.key,
-            name: s.name,
-            artist: s.artist,
-            coverOf: s.coverOf,
-            // Songs you added from Spotify already know their exact track, so they skip matching
-            match: s.spotifyId ? { id: s.spotifyId, name: s.name, artist: s.coverOf ?? s.artist } : undefined,
-          }))}
+          songs={songsForPlaylist(songs)} // grouped by artist, each artist's songs most heard first
           defaultName={selected ? `Encore: ${selected.name}` : "Encore: every song I've heard live"}
           source={selected ? `Saved list: ${selected.name}` : "Songs heard live"}
           spotifyConnected={spotifyConnected}
           returnTab="songs"
+          sourceRef={{ kind: "songs", listId: selected?.id ?? "all" } satisfies PlaylistSource}
           onCreated={props.onPlaylistCreated}
           onClose={() => setBuilding(false)}
+        />
+      )}
+
+      {updating && (
+        <PlaylistBuilder
+          songs={updating.songs}
+          defaultName={updating.playlist.name}
+          source={updating.playlist.source}
+          spotifyConnected={spotifyConnected}
+          returnTab="songs"
+          sourceRef={updating.playlist.sourceRef!}
+          updating={updating.playlist}
+          onCreated={props.onPlaylistUpdated}
+          onClose={() => setUpdating(null)}
         />
       )}
     </section>

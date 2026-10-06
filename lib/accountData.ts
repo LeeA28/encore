@@ -1,7 +1,7 @@
 // Account mode: reading and saving a logged-in user's data in Supabase (Postgres).
 // Row Level Security in the database makes sure each user can only reach their own rows.
 
-import type { Concert, CustomList, SavedList, SavedPlaylist, Song } from "./types";
+import type { Concert, CustomList, PlaylistSource, SavedList, SavedPlaylist, Song } from "./types";
 import { emptyTiers, type Tiers } from "./tiers";
 import { tiersAreEmpty, type EncoreData } from "./guestData";
 import type { EncoreSupabase, Insert, Json, Row } from "./db";
@@ -71,6 +71,7 @@ function playlistToRow(userId: string, p: SavedPlaylist): Insert<"playlists"> {
     track_count: p.trackCount,
     source: p.source,
     created_at: p.createdAt,
+    source_ref: (p.sourceRef ?? null) as unknown as Json,
   };
 }
 
@@ -82,6 +83,7 @@ function rowToPlaylist(r: Row<"playlists">): SavedPlaylist {
     trackCount: r.track_count,
     source: r.source,
     createdAt: r.created_at,
+    sourceRef: (r.source_ref ?? undefined) as unknown as PlaylistSource | undefined,
   };
 }
 
@@ -187,6 +189,17 @@ export async function saveSavedList(supabase: EncoreSupabase, userId: string, li
 
 export async function deleteSavedList(supabase: EncoreSupabase, listId: string) {
   check(await supabase.from("saved_lists").delete().eq("id", listId));
+}
+
+// After a playlist's songs are replaced in Spotify: save its new song count and update time
+export async function updatePlaylistRecord(supabase: EncoreSupabase, userId: string, playlist: SavedPlaylist) {
+  check(
+    await supabase
+      .from("playlists")
+      .update({ track_count: playlist.trackCount, created_at: playlist.createdAt, name: playlist.name })
+      .eq("user_id", userId)
+      .eq("spotify_id", playlist.spotifyId)
+  );
 }
 
 export async function deletePlaylist(supabase: EncoreSupabase, userId: string, spotifyId: string) {

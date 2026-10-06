@@ -111,6 +111,8 @@ components/
   ThemeToggle.tsx            The sun/moon light/dark mode button (kept in sync across both header layouts)
   HeaderMenu.tsx             The ☰ menu on narrow screens: Spotify, Account, Log in/out
   DiscoverTab.tsx            The discover tab: recommended artists, with reasons
+  UpcomingShows.tsx          "Upcoming near you" in discover (Ticketmaster)
+  FansAlsoSaw.tsx            "Fans at your shows also saw" in discover (collaborative filtering)
   SavedListEditor.tsx        Creating and editing saved lists: a name, plus concerts picked from Your concerts
   AddSongPanel.tsx           "+ Add a song" on your concerts: search Spotify or type a song setlist.fm missed
   ConfirmDialog.tsx          Encore's "are you sure?" pop-up, used through useConfirm()
@@ -148,6 +150,11 @@ lib/
   recommend.ts               Pure: taste profile, candidate scoring, reasons, and skipping band members
   musicbrainz.ts             Server-only: band members, other performing names, and aliases (rate-limited, cached a week)
   lastfm.ts                  Server-only: similar artists and MusicBrainz IDs from Last.fm (cached a day)
+  playlistSources.ts         Pure: rebuilding a playlist's songs from what it was made from (making and updating)
+  resumePlaylist.ts          Remembering an unfinished playlist across the trip to Spotify's login
+  geohash.ts                 Pure: coordinates to a geohash (for Ticketmaster)
+  upcoming.ts                Pure: filtering Ticketmaster events and the search window
+  coAttendance.ts            "Fans at your shows also saw": the database call, and leaving out artists you know
   savedLists.ts              Pure: a saved list's concerts, and removing a concert from every list
   concertAdditions.ts        Shared additions: songs others at the same show added, and keeping yours in sync
   sharedMatches.ts           The shared match table: reading shared matches, saving your votes, and which match wins
@@ -165,6 +172,7 @@ app/api/spotify/playlists/status   Server: which playlists are still in your Spo
 app/api/spotify/playlists/restore  Server: adds a deleted playlist back to your library
 supabase/migrations/         The database's version history: one SQL file per change, applied in order
 lib/*.test.ts                Automated tests for the pure functions (npm test)
+e2e/                         Browser tests with Playwright (npm run test:e2e)
 vitest.config.mts            Test settings (including the time zone tests run in)
 .github/workflows/ci.yml     Runs lint, type check, and tests on GitHub for every push
 ```
@@ -1200,6 +1208,55 @@ vitest.config.mts            Test settings (including the time zone tests run in
 - **Removing a concert** from Your concerts also removes it from every list (`removeConcertFromLists`, tested), saving only the lists that changed
 - **Guests** get saved lists in the browser, and they're moved into the account on sign-up with the same IDs, so the merge stays safe to repeat
 - **Jumping to the Rank tab**: the Songs tab hands the list's ID to the Workspace, which switches tabs; the Rank tab reads it once when it opens (`takeInitialList`), then it's cleared, so opening the Rank tab normally later starts on the usual view
+
+---
+
+## Step 29: Six features at once
+
+### 1. Reopening the playlist builder after connecting Spotify (`lib/resumePlaylist.ts`)
+
+- Connecting Spotify means leaving Encore for Spotify's site and coming back, which reloads the page and loses what was on screen
+- Before leaving, the builder saves exactly what it was making (its `PlaylistSource`: all songs, a saved list, or a tier list plus the ticked tiers) in **sessionStorage**, which belongs to one browser tab and disappears when it closes
+- On return, the Songs tab, the Rank tab, a custom list, or a tier list's playlist button checks for that note and reopens the builder exactly as it was
+- **A React detail**: in development, React runs some code twice on purpose to catch mistakes. So the note is only *read* while the page is drawn (`peekResume`) and *removed* afterward in an effect (`clearResume`). Removing it while drawing would make the second run find nothing
+
+### 2. Updating a playlist instead of making a new one
+
+- New playlists now remember their **source** (`source_ref`, a new column): what they were made from, precisely enough to rebuild the same list
+- "Update" on one of Your playlists rebuilds the songs from that source (`songsForSource`, tested), runs matching and the review screen, then **replaces** the playlist's songs in Spotify: same playlist, same link
+- Making and updating use the same functions (`lib/playlistSources.ts`), so they can never disagree about which songs belong in a playlist
+- Playlists made before this change don't know their source, so they don't get an Update button. If a playlist's source is gone (like a deleted saved list), it says so
+
+### 3. Enforcing the email rule on Supabase's side
+
+- The sign-up form's provider check runs in the browser, so someone could skip it by calling Supabase directly
+- A **Before User Created hook** (`hook_before_user_created`, in a migration) runs inside Supabase Auth right before an account is created, and rejects unknown providers with a friendly message. It's available on the free plan
+- Only Supabase Auth's own role (`supabase_auth_admin`) may run it
+- The provider list now exists in two places (TypeScript and SQL), so **a test checks they're identical**. If someone adds a provider to one and forgets the other, the tests fail
+- Tested in PGlite: `gmail.com` is allowed (any capitalization), `mgail.com` is rejected
+
+### 4. Browser tests (Playwright, `e2e/`)
+
+- Unit tests check functions; **browser tests** (also called end-to-end tests) check the app the way a person uses it: a real Chromium browser searches, clicks, drags, and reads the screen
+- Each test runs in both a desktop window and a phone-sized touch screen (`playwright.config.ts`)
+- **Fake APIs** (`e2e/fixtures.ts`): `page.route()` catches the browser's requests to Encore's API routes and answers with fixed data, so the tests never touch setlist.fm, Spotify, or Supabase. That makes them fast, free, repeatable, and safe to run on GitHub
+- What's covered: adding concerts (and surviving a refresh), song counts, saved lists, quick tier buttons, a real mouse drag between tiers, dark mode, the phone menu, and reopening the builder after connecting Spotify
+- **A debugging lesson**: the drag test first failed because the song was below the bottom of the window, and mouse positions only work on screen. Logging the browser's pointer events showed they were landing on nothing. A taller window fixed it
+- Run them with `npm run test:e2e`. On GitHub they run as a second job, and if one fails, a step-by-step recording is saved for download
+
+### 5. Upcoming concerts near you
+
+- In discover, type your city once (remembered in this browser), and see shows by your recommended artists within 100 km over the next 6 months, from **Ticketmaster's** event API
+- The city becomes coordinates through Open-Meteo's free geocoding service, then a **geohash** (`lib/geohash.ts`, tested against the standard example): the world is split in half again and again, alternating east/west and north/south, and every 5 splits become one character. More characters = a smaller box
+- Ticketmaster's keyword search is loose, so `showsForArtist` keeps only events where the artist is actually a listed performer (a tribute night "featuring the songs of" doesn't count)
+- Requests go 4 at a time (Ticketmaster allows about 5 per second), cached for 6 hours, and the date window is rounded to the day so cached answers can be reused all day
+
+### 6. "Fans at your shows also saw..." (collaborative filtering)
+
+- Recommendations from *people* instead of similarity: if people who were at your concerts have also seen an artist, you might like them too
+- `get_co_attended_artists` (a security definer function, like the other shared ones) finds other people at your concerts, then counts how many of them have seen each artist
+- **Privacy threshold**: an artist only appears once at least 3 different people connect to it, so nobody can work out a specific person's concert history. Tested in PGlite: an artist seen by 3 fellow fans appears, one seen by 2 doesn't, and someone who wasn't at your show isn't counted
+- It shows as its own section in discover. With few users, it explains that it fills in as more people use Encore: the **cold start problem** in action
 
 ---
 

@@ -3,10 +3,12 @@
 // The Rank tab: rank songs you've heard live, your custom lists (songs from Spotify),
 // or your saved lists (groups of concerts, made in the Songs tab). Each has its own tier list.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { RankItem, SongCount } from "@/lib/types";
 import { countSongs } from "@/lib/songs";
 import { concertsInList } from "@/lib/savedLists";
+import { toRankItems } from "@/lib/playlistSources";
+import { peekResume } from "@/lib/resumePlaylist";
 import type { EncoreDataApi } from "@/lib/useEncoreData";
 import TierBoard from "./TierBoard";
 import CustomLists from "./CustomLists";
@@ -17,29 +19,31 @@ type Props = {
   songs: SongCount[];
   data: EncoreDataApi;
   spotifyConnected: boolean | null;
-  // If "Rank this list →" was clicked in the Songs tab: which saved list to open (read once, when the tab opens)
-  takeInitialList?: () => string | null;
+  // If "Rank this list →" was clicked in the Songs tab: which saved list to open
+  initialList?: string | null;
+  onInitialListUsed?: () => void;
 };
 
 type Mode = "live" | "custom" | "saved";
 
-// Song counts → tier-list items
-function toRankItems(songs: SongCount[]): RankItem[] {
-  return songs.map((s) => ({
-    key: s.key,
-    name: s.name,
-    artist: s.artist,
-    coverOf: s.coverOf, // needed to find covers on Spotify
-    spotifyId: s.spotifyId, // songs you added from Spotify skip matching in tier playlists
-    detail: `heard ${s.timesHeard}×`,
-  }));
-}
+export default function RankTab({ songs, data, spotifyConnected, initialList, onInitialListUsed }: Props) {
+  // Where to start: a saved list from "Rank this list →", or wherever a playlist was being made
+  // before connecting Spotify, or else songs heard live
+  const [start] = useState<{ mode: Mode; savedId?: string }>(() => {
+    if (initialList) return { mode: "saved", savedId: initialList };
+    const r = peekResume();
+    if (r?.kind === "tiers") {
+      if (r.context.startsWith("saved:")) return { mode: "saved", savedId: r.context.slice(6) };
+      if (r.context.startsWith("custom:")) return { mode: "custom" };
+    }
+    return { mode: "live" };
+  });
+  useEffect(() => {
+    if (initialList) onInitialListUsed?.(); // it's been used, so a later visit starts normally
+  }, [initialList, onInitialListUsed]);
 
-export default function RankTab({ songs, data, spotifyConnected, takeInitialList }: Props) {
-  // Start on a specific saved list when arriving from "Rank this list →"
-  const [initialList] = useState(() => takeInitialList?.() ?? null);
-  const [mode, setMode] = useState<Mode>(initialList ? "saved" : "live");
-  const [savedId, setSavedId] = useState<string>(initialList ?? data.savedLists[0]?.id ?? "");
+  const [mode, setMode] = useState<Mode>(start.mode);
+  const [savedId, setSavedId] = useState<string>(start.savedId ?? data.savedLists[0]?.id ?? "");
 
   const liveItems: RankItem[] = useMemo(() => toRankItems(songs), [songs]);
 
@@ -80,6 +84,7 @@ export default function RankTab({ songs, data, spotifyConnected, takeInitialList
                 items={liveItems}
                 tiers={data.liveTiers}
                 listName="Songs heard live"
+                context="live"
                 spotifyConnected={spotifyConnected}
                 onCreated={data.addPlaylist}
               />
@@ -106,6 +111,7 @@ export default function RankTab({ songs, data, spotifyConnected, takeInitialList
                 items={savedItems}
                 tiers={savedList.tiers}
                 listName={savedList.name}
+                context={`saved:${savedList.id}`}
                 spotifyConnected={spotifyConnected}
                 onCreated={data.addPlaylist}
               />

@@ -201,3 +201,13 @@ export async function restorePlaylist(id: string) {
   const params = new URLSearchParams({ uris: playlistUri(id) });
   await spotifyGet(`/me/library?${params}`, undefined, "PUT");
 }
+
+// Replaces a playlist's songs with a new list, in order (used by "Update").
+// PUT replaces everything with the first 100 tracks; any more are then added 100 at a time.
+export async function replacePlaylistTracks(playlistId: string, trackIds: string[]) {
+  const uris = trackIds.map((id) => `spotify:track:${id}`);
+  await spotifyGet(`/playlists/${playlistId}/items`, { uris: uris.slice(0, 100) }, "PUT");
+  for (let i = 100; i < uris.length; i += 100) {
+    await spotifyGet(`/playlists/${playlistId}/items`, { uris: uris.slice(i, i + 100) });
+  }
+}

@@ -17,8 +17,8 @@ Pick the concerts you've been to, and Encore pulls each show's setlist, counts h
 - **Missing songs**: add songs a setlist missed (like a tour's daily secret song), and see what other Encore users at the same show added
 - **Saved lists**: group concerts however you like ("2026", "every 5SOS show"), each with its own song counts, playlist, and tier list
 - **Tier lists**: drag-and-drop S/A/B/C/D rankings for songs heard live, saved lists, and custom lists built from any artist's discography or albums
-- **Spotify playlists**: automatic song matching with a review screen to change, skip, or search for any match, then a playlist in your Spotify account
-- **Discover**: artist recommendations based on your rankings and the shows you've seen, with a reason for each
+- **Spotify playlists**: automatic song matching with a review screen to change, skip, or search for any match, then a playlist in your Spotify account, which can be updated later with the current songs
+- **Discover**: artist recommendations based on your rankings and the shows you've seen, with a reason for each; what other fans at your shows have seen; and upcoming concerts by recommended artists near you
 - **Accounts**: email sign-up with confirmation, password reset, and your data saved across devices (or in the browser, as a guest)
 - **Light and dark mode**, and a layout built for phones
 
@@ -40,6 +40,7 @@ flowchart LR
     Server --> Spotify["Spotify<br/>search and playlists"]
     Server --> Lastfm["Last.fm<br/>similar artists"]
     Server --> MusicBrainz["MusicBrainz<br/>band members"]
+    Server --> Ticketmaster["Ticketmaster<br/>upcoming events"]
 ```
 
 - The browser never sees an API key: every request to setlist.fm, Spotify, Last.fm, and MusicBrainz goes through Encore's own API routes
@@ -68,7 +69,7 @@ Shared matches and shared song additions need everyone's data, but nobody should
 
 ### Recommendations
 
-Each artist you know gets a score from explicit signals (tier rankings: S = 5 down to D = 1) and implicit ones (shows attended). Similar artists from Last.fm are scored by the sum of (your artist's score × similarity), so artists similar to several favorites rise to the top. MusicBrainz data then removes band members' solo projects (including other performing names, like a member's solo alias), collaboration credits that include artists you know, and members of a recommended band, for a more varied list. Every recommendation explains itself, and a hold-out test checks that hiding a favorite artist gets it recommended back.
+Each artist you know gets a score from explicit signals (tier rankings: S = 5 down to D = 1) and implicit ones (shows attended). Similar artists from Last.fm are scored by the sum of (your artist's score × similarity), so artists similar to several favorites rise to the top. MusicBrainz data then removes band members' solo projects (including other performing names, like a member's solo alias), collaboration credits that include artists you know, and members of a recommended band, for a more varied list. Every recommendation explains itself, and a hold-out test checks that hiding a favorite artist gets it recommended back. A second, collaborative section shows what other fans at your shows have seen, with a privacy threshold of 3 people.
 
 ### Working within rate limits
 
@@ -79,7 +80,7 @@ setlist.fm allows 1,440 requests a day for the whole app, and MusicBrainz 1 per 
 - **Frontend**: Next.js 16 (App Router), React, TypeScript, CSS with design tokens, dnd-kit for drag and drop
 - **Backend**: Next.js API routes, Supabase (Postgres, Auth, Row Level Security)
 - **APIs**: setlist.fm, Spotify Web API, Last.fm, MusicBrainz
-- **Testing and CI**: Vitest (78 tests on the core logic, including regression tests for real bugs), GitHub Actions running lint, type checking, and tests on every push
+- **Testing and CI**: Vitest (90 unit tests on the core logic, including regression tests for real bugs), Playwright browser tests at desktop and phone sizes with faked APIs, and GitHub Actions running lint, type checking, and both test suites on every push
 - **Database workflow**: versioned migrations and generated TypeScript types with the Supabase CLI, with separate development and production projects
 - **Hosting**: Vercel
 
@@ -90,14 +91,13 @@ setlist.fm allows 1,440 requests a day for the whole app, and MusicBrainz 1 per 
 3. Set up the database: `npx supabase login`, `npx supabase link --project-ref <your-ref>`, then `npm run db:push`
 4. Run `npm run dev` and open `http://127.0.0.1:3000` (Spotify only accepts `127.0.0.1` for local logins)
 
-Useful scripts: `npm test`, `npm run typecheck`, `npm run lint`, `npm run db:new <name>`, `npm run db:types`
+Useful scripts: `npm test`, `npm run test:e2e`, `npm run typecheck`, `npm run lint`, `npm run db:new <name>`, `npm run db:types`
 
 ## Known limitations
 
 - **Spotify features are invite-only.** Spotify's development mode allows up to 5 invited accounts; extended access requires an organization with a large user base. Everything else in Encore works for everyone
 - **The free database pauses** after about a week without activity
-- **Collaborative filtering** ("people who saw the same shows also saw...") needs more users to be useful, so recommendations are content-based for now
-- **The UI isn't covered by automated tests yet**; the tests focus on the core logic
+- **"Fans at your shows also saw"** needs more users to fill in (it only shows artists at least 3 people connect to, for privacy)
 
 ## What's next
 
@@ -109,4 +109,4 @@ Built with AI-assisted development: I designed the product, made the technical d
 
 ## Credits
 
-Setlist data from [setlist.fm](https://www.setlist.fm). Similar-artist data from [Last.fm](https://www.last.fm). Artist relationships from [MusicBrainz](https://musicbrainz.org). Music data and playlists via [Spotify](https://www.spotify.com).
+Setlist data from [setlist.fm](https://www.setlist.fm). Similar-artist data from [Last.fm](https://www.last.fm). Artist relationships from [MusicBrainz](https://musicbrainz.org). Music data and playlists via [Spotify](https://www.spotify.com). Event data from [Ticketmaster](https://www.ticketmaster.com).
