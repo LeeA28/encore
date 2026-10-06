@@ -12,6 +12,7 @@ import { clearResume, peekResume } from "@/lib/resumePlaylist";
 import PlaylistBuilder from "./PlaylistBuilder";
 import PlaylistList from "./PlaylistList";
 import SavedListEditor from "./SavedListEditor";
+import SongConcertsDialog from "./SongConcertsDialog";
 import { useConfirm } from "./ConfirmDialog";
 import { NoteIcon } from "./Icons";
 
@@ -51,6 +52,7 @@ export default function SongList(props: Props) {
     null
   );
   const [updateError, setUpdateError] = useState("");
+  const [openSong, setOpenSong] = useState<SongCount | null>(null); // the song whose concerts are showing
 
   function startUpdate(playlist: SavedPlaylist) {
     const songs = playlist.sourceRef ? songsForSource(playlist.sourceRef, props.sourceData) : null;
@@ -185,16 +187,19 @@ export default function SongList(props: Props) {
           {songs.length === 0 && <p className="notice">This list&apos;s concerts don&apos;t have any songs yet.</p>}
           <ol className="song-rows">
             {songs.map((s, i) => (
-              <li key={s.key} className="song-row">
-                <span className="song-rank">{i + 1}</span>
-                <div className="song-info">
-                  <div className="song-name">{s.name}</div>
-                  <div className="song-artist">
-                    {s.artist}
-                    {s.coverOf && ` · cover of ${s.coverOf}`}
-                  </div>
-                </div>
-                <span className="count-pill">{s.timesHeard}×</span>
+              <li key={s.key}>
+                {/* A button, so it works with the keyboard and screen readers too */}
+                <button className="song-row song-row-button" onClick={() => setOpenSong(s)}>
+                  <span className="song-rank">{i + 1}</span>
+                  <span className="song-info">
+                    <span className="song-name">{s.name}</span>
+                    <span className="song-artist">
+                      {s.artist}
+                      {s.coverOf && ` · cover of ${s.coverOf}`}
+                    </span>
+                  </span>
+                  <span className="count-pill">{s.timesHeard}×</span>
+                </button>
               </li>
             ))}
           </ol>
@@ -211,6 +216,15 @@ export default function SongList(props: Props) {
           sourceRef={{ kind: "songs", listId: selected?.id ?? "all" } satisfies PlaylistSource}
           onCreated={props.onPlaylistCreated}
           onClose={() => setBuilding(false)}
+        />
+      )}
+
+      {openSong && (
+        <SongConcertsDialog
+          song={openSong}
+          concerts={concerts}
+          highlightIds={selected ? new Set(selected.concertIds) : undefined}
+          onClose={() => setOpenSong(null)}
         />
       )}
 

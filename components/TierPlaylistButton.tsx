@@ -15,15 +15,16 @@ type Props = {
   tiers: Tiers;
   listName: string; // e.g. "Songs heard live" or a custom list's name
   context: string; // which tier list this is: "live", "saved:<id>", or "custom:<id>"
+  artist?: string; // set when the tier list is showing only one artist's songs
   spotifyConnected: boolean | null;
   onCreated: (playlist: SavedPlaylist) => void;
 };
 
-export default function TierPlaylistButton({ items, tiers, listName, context, spotifyConnected, onCreated }: Props) {
+export default function TierPlaylistButton({ items, tiers, listName, context, artist, spotifyConnected, onCreated }: Props) {
   // Returning from connecting Spotify mid-playlist: reopen the builder with the same tiers ticked
   const [resume] = useState(() => {
     const r = peekResume();
-    return r?.kind === "tiers" && r.context === context ? r : null;
+    return r?.kind === "tiers" && r.context === context && r.artist === artist ? r : null;
   });
   useEffect(() => {
     if (resume) clearResume(); // only reopen once
@@ -91,7 +92,7 @@ export default function TierPlaylistButton({ items, tiers, listName, context, sp
           source={`${tierLabel} tiers of ${listName}`}
           spotifyConnected={spotifyConnected}
           returnTab="rank"
-          sourceRef={{ kind: "tiers", context, tiers: TIER_NAMES.filter((t) => picked.includes(t)) }}
+          sourceRef={{ kind: "tiers", context, tiers: TIER_NAMES.filter((t) => picked.includes(t)), artist }}
           onCreated={onCreated}
           onClose={() => setBuilding(null)}
         />

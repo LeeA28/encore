@@ -2,7 +2,7 @@
 // (like a secret song setlist.fm is missing). Database side: supabase/migrations/20261004000000_song_additions.sql
 
 import type { Concert } from "./types";
-import { createClient } from "./supabase/client";
+import { createClient, isSupabaseConfigured } from "./supabase/client";
 import { normalize, splitMedley } from "./songs";
 
 export type ConcertAddition = { songName: string; spotifyId?: string; people: number };
@@ -12,6 +12,7 @@ export type ConcertAddition = { songName: string; spotifyId?: string; people: nu
 export async function fetchConcertAdditions(setlistIds: string[]): Promise<Record<string, ConcertAddition[]>> {
   const result: Record<string, ConcertAddition[]> = {};
   if (setlistIds.length === 0) return result;
+  if (!isSupabaseConfigured()) return result; // no Supabase (a guest-only setup): nothing shared to load
   try {
     const { data, error } = await createClient().rpc("get_concert_additions", { setlist_ids: setlistIds });
     if (error) throw error;

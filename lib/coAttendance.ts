@@ -1,7 +1,7 @@
 // "People who saw the same shows also saw...": collaborative filtering from Encore's own users.
 // Database side: get_co_attended_artists in supabase/migrations/20261006000200_co_attendance.sql
 
-import { createClient } from "./supabase/client";
+import { createClient, isSupabaseConfigured } from "./supabase/client";
 import { normalize } from "./songs";
 import { splitCollaboration, type TasteProfile } from "./recommend";
 
@@ -10,6 +10,7 @@ export type CoAttendedArtist = { artist: string; people: number };
 // Asks the database. If anything goes wrong (or Supabase isn't set up), there are simply none.
 export async function fetchCoAttended(setlistIds: string[]): Promise<CoAttendedArtist[]> {
   if (setlistIds.length === 0) return [];
+  if (!isSupabaseConfigured()) return []; // no Supabase (a guest-only setup): nothing shared to load
   try {
     const { data, error } = await createClient().rpc("get_co_attended_artists", { setlist_ids: setlistIds });
     if (error) throw error;

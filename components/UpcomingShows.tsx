@@ -58,7 +58,9 @@ export default function UpcomingShows({ artists }: { artists: string[] }) {
 
   return (
     <>
-      <h2 className="card-subtitle">upcoming near you</h2>
+      <p className="muted" style={{ fontSize: 14 }}>
+        Upcoming shows by your recommended artists near you.
+      </p>
       <form className="form-row" onSubmit={saveCity} style={{ marginBottom: 8 }}>
         <input
           className="input grow"

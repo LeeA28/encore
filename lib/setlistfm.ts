@@ -85,3 +85,37 @@ export async function searchSetlists(options: SearchOptions): Promise<SearchResp
 
   return res.json();
 }
+
+// ---- City suggestions ----
+
+export type CitySuggestion = { name: string; region?: string; countryCode: string; countryName: string };
+
+// setlist.fm's own list of cities, so the names always match what its setlist search expects.
+// Cached for a day (city lists rarely change), which also keeps typing from using up the daily limit.
+export async function searchCities(name: string, countryCode?: string): Promise<CitySuggestion[]> {
+  const apiKey = process.env.SETLISTFM_API_KEY;
+  if (!apiKey) throw new SetlistFmError("SETLISTFM_API_KEY is missing from .env.local", 500);
+
+  const params = new URLSearchParams({ name, p: "1" });
+  if (countryCode) params.set("country", countryCode);
+  const res = await fetch(`${BASE_URL}/search/cities?${params}`, {
+    headers: { "x-api-key": apiKey, Accept: "application/json" },
+    next: { revalidate: 60 * 60 * 24 },
+  });
+  if (res.status === 404) return []; // no matching cities
+  if (res.status === 429) throw new SetlistFmError("Too many searches too quickly. Wait a moment and try again.", 429);
+  if (!res.ok) throw new SetlistFmError(`setlist.fm returned ${res.status}`, 502);
+
+  const data = await res.json();
+  type City = { name: string; state?: string; country?: { code: string; name: string } };
+  const seen = new Set<string>();
+  const suggestions: CitySuggestion[] = [];
+  for (const c of (data.cities ?? []) as City[]) {
+    if (!c.country) continue;
+    const key = `${c.name}|${c.state ?? ""}|${c.country.code}`; // setlist.fm can list near-duplicates
+    if (seen.has(key)) continue;
+    seen.add(key);
+    suggestions.push({ name: c.name, region: c.state || undefined, countryCode: c.country.code, countryName: c.country.name });
+  }
+  return suggestions.slice(0, 6);
+}

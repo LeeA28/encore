@@ -64,7 +64,7 @@ export type SavedPlaylist = {
 // Where a playlist's songs come from, precisely enough to rebuild the same song list later
 export type PlaylistSource =
   | { kind: "songs"; listId: string } // the Songs tab: "all", or a saved list's id
-  | { kind: "tiers"; context: string; tiers: ("S" | "A" | "B" | "C" | "D")[] }; // chosen tiers of a tier list
+  | { kind: "tiers"; context: string; tiers: ("S" | "A" | "B" | "C" | "D")[]; artist?: string }; // chosen tiers of a tier list (optionally one artist's songs)
 // A tier list's context: "live" (songs heard live), "saved:<id>" (a saved list), or "custom:<id>" (a custom list)
 
 // A saved list: a named group of concerts you picked, with its own tier list.

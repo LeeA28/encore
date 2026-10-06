@@ -26,7 +26,9 @@ export default function FansAlsoSaw({ concertIds, profile }: { concertIds: strin
 
   return (
     <>
-      <h2 className="card-subtitle">fans at your shows also saw</h2>
+      <p className="muted" style={{ fontSize: 14 }}>
+        Artists that other Encore users who were at your shows have also seen live.
+      </p>
       {rows === null && <p className="notice">Checking what other fans have seen...</p>}
       {rows !== null && artists.length === 0 && (
         // The "cold start problem": this kind of recommendation needs other people's data first

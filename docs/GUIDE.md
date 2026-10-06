@@ -111,6 +111,8 @@ components/
   ThemeToggle.tsx            The sun/moon light/dark mode button (kept in sync across both header layouts)
   HeaderMenu.tsx             The ☰ menu on narrow screens: Spotify, Account, Log in/out
   DiscoverTab.tsx            The discover tab: recommended artists, with reasons
+  CityInput.tsx              The City box, with a dropdown of setlist.fm city suggestions
+  SongConcertsDialog.tsx     Pop-up: the concerts a song was played at, newest first
   UpcomingShows.tsx          "Upcoming near you" in discover (Ticketmaster)
   FansAlsoSaw.tsx            "Fans at your shows also saw" in discover (collaborative filtering)
   SavedListEditor.tsx        Creating and editing saved lists: a name, plus concerts picked from Your concerts
@@ -1257,6 +1259,41 @@ vitest.config.mts            Test settings (including the time zone tests run in
 - `get_co_attended_artists` (a security definer function, like the other shared ones) finds other people at your concerts, then counts how many of them have seen each artist
 - **Privacy threshold**: an artist only appears once at least 3 different people connect to it, so nobody can work out a specific person's concert history. Tested in PGlite: an artist seen by 3 fellow fans appears, one seen by 2 doesn't, and someone who wasn't at your show isn't counted
 - It shows as its own section in discover. With few users, it explains that it fills in as more people use Encore: the **cold start problem** in action
+
+---
+
+## Step 30: Feedback round (cities, song details, one artist at a time, discover tabs)
+
+### City suggestions (`components/CityInput.tsx`, `/api/cities`)
+
+- setlist.fm only matches complete city names, so typing "tor" found nothing. Now, after 2 letters and a short pause, a dropdown suggests matching cities from **setlist.fm's own city list** (so names always match what its search expects), filtered to the chosen country
+- Each suggestion shows its region ("Toronto, Ontario, Canada"). Picking one fills in the full name, and if the country was "Any country," sets it too, so a search for London finds only the London you meant
+- The search only uses a city once it's chosen (picked, Enter, or leaving the box), so half-typed names don't trigger searches that find nothing
+- Keyboard support: arrow keys, Enter, and Escape. `role="combobox"` and `role="listbox"` describe it to screen readers
+- `onMouseDown` (not `onClick`) on suggestions, because a click happens after the box loses focus, which would close the dropdown first
+- Lookups are cached for a day and outdated ones are cancelled, like the artist search
+
+### Which concerts a song came from (`SongConcertsDialog.tsx`)
+
+- Clicking a song in the Songs tab opens a pop-up with every concert where you heard it, newest first, with venue, tour, and a setlist.fm link
+- In a saved list, it still shows all your concerts with that song, and highlights the list's ones ("In this list")
+- `concertsForSong` (tested) reuses `countSongs`, so songs inside medleys and songs you added are found the same way as everywhere else
+- Song rows became real `<button>`s, so they work with the keyboard and screen readers, not just a mouse
+
+### Ranking one artist at a time
+
+- The Rank tab's "Songs I've heard live" and "Saved lists" modes have an artist picker ("All artists" plus each artist, with their number of songs)
+- It's the **same tier list**, just showing one artist. The tricky part: the board only knows about the songs it's showing, so saving its changes directly would wipe out every other artist's rankings
+- `mergeFilteredTiers` (tested) solves it: in each tier, hidden songs stay exactly where they were, the shown songs fill their old spots in their new order, and songs newly added to a tier go at the end. A browser test ranks a 5SOS song, switches to Bruno Mars, ranks one of his, and checks both are still in S tier
+- "Make a playlist" while an artist is picked uses only that artist's songs, and remembers the artist so the playlist can be updated (and reopened after connecting Spotify) correctly
+
+### Discover tabs
+
+- **For you**, **Fans also saw**, and **Upcoming** are now tabs, since a new user might never scroll far enough to find the last two
+
+### Quieter guest mode
+
+- Without Supabase settings (a guest-only setup, like the browser tests), the shared features used to try anyway, fail, and log a warning every time. `isSupabaseConfigured()` now lets them skip quietly, so real problems stand out in the logs
 
 ---
 

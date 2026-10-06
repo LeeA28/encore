@@ -18,11 +18,17 @@ const concert = (id: string, date: string, city: string, songs: string[]) => ({
 export const FAKE_CONCERTS = [
   concert("show1", "2026-08-05", "Toronto", ["Amnesia", "Bad Omens", "Boyband"]),
   concert("show2", "2026-07-04", "Vancouver", ["Amnesia", "Easier"]),
+  { ...concert("show3", "2025-05-30", "Toronto", ["24K Magic", "Perm"]), artist: "Bruno Mars", tour: "The Romantic Tour" },
 ];
 
 export async function fakeApis(page: Page) {
   await page.route("**/api/search?**", (route) =>
     route.fulfill({ json: { concerts: FAKE_CONCERTS, page: 1, hasMore: false } })
+  );
+  await page.route("**/api/cities?**", (route) =>
+    route.fulfill({
+      json: { cities: [{ name: "Toronto", region: "Ontario", countryCode: "CA", countryName: "Canada" }] },
+    })
   );
   await page.route("**/api/spotify/status", (route) => route.fulfill({ json: { connected: false } }));
   await page.route("**/api/recommendations", (route) => route.fulfill({ json: { similar: {} } }));
@@ -42,7 +48,7 @@ export const test = base.extend<{ fake: void }>({
 
 export { expect } from "@playwright/test";
 
-// Search for the artist and add both fake concerts to Your concerts
+// Search for the artist and add the first two fake concerts (both 5SOS) to Your concerts
 export async function addBothConcerts(page: Page) {
   await page.goto("/");
   await page.getByPlaceholder("Start typing an artist").fill("5 Seconds of Summer");
@@ -53,4 +59,11 @@ export async function addBothConcerts(page: Page) {
 // Click a tab in whichever header layout is showing (the wide one, or the phone-sized bar)
 export async function openTab(page: Page, name: string) {
   await page.getByRole("button", { name, exact: true }).filter({ visible: true }).first().click();
+}
+
+// Add all three fake concerts (two 5SOS shows and one Bruno Mars show)
+export async function addAllConcerts(page: Page) {
+  await page.goto("/");
+  await page.getByPlaceholder("Start typing an artist").fill("anything");
+  for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "I was there" }).first().click();
 }

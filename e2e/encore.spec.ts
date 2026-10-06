@@ -1,6 +1,6 @@
 // Browser tests: the main flows a guest goes through, in a real browser (desktop and phone sizes)
 
-import { test, expect, addBothConcerts, openTab } from "./fixtures";
+import { test, expect, addAllConcerts, addBothConcerts, openTab } from "./fixtures";
 
 test("searching and adding concerts, which survive a refresh", async ({ page }) => {
   await addBothConcerts(page);
@@ -98,4 +98,55 @@ test("the playlist builder reopens after returning from connecting Spotify", asy
   await expect(page.getByRole("heading", { name: "make a playlist" })).toBeVisible();
   // ...and only once: the note is cleared, so a refresh doesn't reopen it
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("encore:resumePlaylist"))).toBeNull();
+});
+
+test("clicking a song lists the concerts it was played at, newest first", async ({ page }) => {
+  await addBothConcerts(page);
+  await openTab(page, "songs");
+  await page.getByRole("button", { name: /Amnesia/ }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Amnesia" });
+  await expect(dialog).toBeVisible();
+  const rows = dialog.locator(".result-row");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("Aug 5, 2026"); // Toronto, the newer show
+  await expect(rows.last()).toContainText("Jul 4, 2026");
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+});
+
+test("ranking one artist at a time keeps everyone else's rankings", async ({ page }) => {
+  await addAllConcerts(page);
+  await openTab(page, "rank");
+  const firstTier = page.locator(".tier-row").first();
+
+  // Rank a 5SOS song in S with all artists showing
+  await page.locator(".tier-row").last().locator(".song-chip", { hasText: "Amnesia" }).getByRole("button", { name: "S", exact: true }).click();
+
+  // Show only Bruno Mars, and rank one of his songs in S too
+  await page.getByLabel("Show artist").selectOption("Bruno Mars");
+  await expect(page.locator(".song-chip", { hasText: "Amnesia" })).toHaveCount(0); // 5SOS is hidden
+  await page.locator(".tier-row").last().locator(".song-chip").first().getByRole("button", { name: "S", exact: true }).click();
+  await expect(firstTier.locator(".song-chip")).toHaveCount(1); // only Bruno's song shows
+
+  // Back to all artists: both songs are in S
+  await page.getByLabel("Show artist").selectOption("");
+  await expect(firstTier.locator(".song-chip")).toHaveCount(2);
+});
+
+test("picking a city suggestion fills in the full name and the country", async ({ page }) => {
+  await page.goto("/");
+  await page.getByPlaceholder("City").fill("tor");
+  await page.getByRole("option", { name: /Toronto/ }).click();
+  await expect(page.getByPlaceholder("City")).toHaveValue("Toronto");
+  await expect(page.locator("select.select").first()).toHaveValue("CA"); // "Any country" became Canada
+});
+
+test("discover has tabs for each kind of suggestion", async ({ page }) => {
+  await addBothConcerts(page);
+  await openTab(page, "discover");
+  await expect(page.getByRole("button", { name: "For you" })).toBeVisible();
+  await page.getByRole("button", { name: "Fans also saw" }).click();
+  await expect(page.getByText("Not enough Encore users have been to your shows yet.")).toBeVisible();
 });

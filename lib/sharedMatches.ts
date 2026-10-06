@@ -2,7 +2,7 @@
 // (The database side is supabase/migrations/20261003000000_shared_matches.sql.)
 
 import type { TrackMatch } from "./types";
-import { createClient } from "./supabase/client";
+import { createClient, isSupabaseConfigured } from "./supabase/client";
 
 export type SharedMatch = { match: TrackMatch; votes: number };
 
@@ -31,6 +31,7 @@ export function resolveKnownMatch(
 export async function fetchSharedMatches(songKeys: string[]): Promise<Record<string, SharedMatch>> {
   const result: Record<string, SharedMatch> = {};
   if (songKeys.length === 0) return result;
+  if (!isSupabaseConfigured()) return result; // no Supabase (a guest-only setup): nothing shared to load
   try {
     const supabase = createClient();
     for (let i = 0; i < songKeys.length; i += 200) {
@@ -53,7 +54,7 @@ export async function fetchSharedMatches(songKeys: string[]): Promise<Record<str
 // Saves your matches as votes (only when logged in; guests can't vote).
 // Upsert: adds new votes, and moves existing ones if you picked a different track this time.
 export async function saveMatchVotes(matches: { songKey: string; match: TrackMatch }[]) {
-  if (matches.length === 0) return;
+  if (matches.length === 0 || !isSupabaseConfigured()) return;
   const supabase = createClient();
   const { data } = await supabase.auth.getUser();
   if (!data.user) return; // a guest

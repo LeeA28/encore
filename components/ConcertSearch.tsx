@@ -7,6 +7,7 @@ import { getCountries } from "@/lib/countries";
 import { addSongToConcert, removeAddedSong } from "@/lib/songs";
 import { fetchConcertAdditions, newSuggestions, type ConcertAddition } from "@/lib/concertAdditions";
 import AddSongPanel from "./AddSongPanel";
+import CityInput from "./CityInput";
 import { TicketIcon } from "./Icons";
 
 // Built once when this file loads (not on every render), since the list never changes
@@ -130,7 +131,15 @@ export default function ConcertSearch({ myConcerts, onAdd, onRemove, onUpdate, s
             onChange={(e) => setYear(e.target.value.replace(/\D/g, ""))} // digits only
             placeholder="Year"
           />
-          <input className="input" style={{ width: 170 }} value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
+          <CityInput
+            value={city}
+            country={country}
+            onChoose={(chosenCity, countryCode) => {
+              setCity(chosenCity);
+              // Picking "London, England" with "Any country" also sets the country, so only that London is searched
+              if (countryCode && !country) setCountry(countryCode);
+            }}
+          />
           {/* Shows country names, but sends the 2-letter code that setlist.fm needs */}
           <select className="select" value={country} onChange={(e) => setCountry(e.target.value)}>
             <option value="">Any country</option>

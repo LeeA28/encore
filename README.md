@@ -12,11 +12,11 @@ Pick the concerts you've been to, and Encore pulls each show's setlist, counts h
 
 ## Features
 
-- **Concert search** across setlist.fm's crowd-sourced setlists, filtered by year, city, and country, with results as you type
-- **Song counts**: every song you've heard live, from most to least heard, with medleys split into their individual songs
+- **Concert search** across setlist.fm's crowd-sourced setlists, filtered by year, city (with suggestions), and country, with results as you type
+- **Song counts**: every song you've heard live, from most to least heard, with medleys split into their individual songs; click a song to see every concert you heard it at
 - **Missing songs**: add songs a setlist missed (like a tour's daily secret song), and see what other Encore users at the same show added
 - **Saved lists**: group concerts however you like ("2026", "every 5SOS show"), each with its own song counts, playlist, and tier list
-- **Tier lists**: drag-and-drop S/A/B/C/D rankings for songs heard live, saved lists, and custom lists built from any artist's discography or albums
+- **Tier lists**: drag-and-drop S/A/B/C/D rankings for songs heard live, saved lists, and custom lists built from any artist's discography or albums, with the option to rank one artist at a time
 - **Spotify playlists**: automatic song matching with a review screen to change, skip, or search for any match, then a playlist in your Spotify account, which can be updated later with the current songs
 - **Discover**: artist recommendations based on your rankings and the shows you've seen, with a reason for each; what other fans at your shows have seen; and upcoming concerts by recommended artists near you
 - **Accounts**: email sign-up with confirmation, password reset, and your data saved across devices (or in the browser, as a guest)
@@ -80,7 +80,7 @@ setlist.fm allows 1,440 requests a day for the whole app, and MusicBrainz 1 per 
 - **Frontend**: Next.js 16 (App Router), React, TypeScript, CSS with design tokens, dnd-kit for drag and drop
 - **Backend**: Next.js API routes, Supabase (Postgres, Auth, Row Level Security)
 - **APIs**: setlist.fm, Spotify Web API, Last.fm, MusicBrainz
-- **Testing and CI**: Vitest (90 unit tests on the core logic, including regression tests for real bugs), Playwright browser tests at desktop and phone sizes with faked APIs, and GitHub Actions running lint, type checking, and both test suites on every push
+- **Testing and CI**: Vitest (95 unit tests on the core logic, including regression tests for real bugs), Playwright browser tests at desktop and phone sizes with faked APIs, and GitHub Actions running lint, type checking, and both test suites on every push
 - **Database workflow**: versioned migrations and generated TypeScript types with the Supabase CLI, with separate development and production projects
 - **Hosting**: Vercel
 

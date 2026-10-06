@@ -4,7 +4,7 @@
 // and expect(actual).toBe(expected) fails the test if they don't match.
 
 import { describe, expect, it } from "vitest";
-import { addSongToConcert, countSongs, groupByArtist, normalize, removeAddedSong, songKey, splitMedley } from "./songs";
+import { addSongToConcert, concertsForSong, countSongs, groupByArtist, normalize, removeAddedSong, songKey, splitMedley } from "./songs";
 import type { Concert, SongCount } from "./types";
 
 // Small helpers to make test data short to write
@@ -165,5 +165,16 @@ describe("countSongs with a medley of covers", () => {
     };
     const covers = Object.fromEntries(countSongs([show]).map((s) => [s.name, s.coverOf]));
     expect(covers).toEqual({ "Oh Girl": "The Chi-Lites", "I Miss You": "Harold Melvin & The BlueNotes" });
+  });
+});
+
+describe("concertsForSong", () => {
+  it("lists every concert where a song was played, newest first, including inside medleys", () => {
+    const shows: Concert[] = [
+      { ...concert("old", "Band", ["Hit"]), date: "2025-01-01" },
+      { ...concert("new", "Band", ["Intro / Hit"]), date: "2026-01-01" },
+      { ...concert("other", "Band", ["Something Else"]), date: "2026-06-01" },
+    ];
+    expect(concertsForSong(songKey("Band", "Hit"), shows).map((c) => c.id)).toEqual(["new", "old"]);
   });
 });

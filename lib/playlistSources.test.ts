@@ -38,6 +38,11 @@ describe("songsForSource", () => {
     expect(songs?.map((s) => s.name)).toEqual(["Deep Cut", "Hit"]);
   });
 
+  it("rebuilds only one artist's songs when the playlist was made for one artist", () => {
+    const songs = songsForSource({ kind: "tiers", context: "live", tiers: ["S", "A"], artist: "Other" }, data);
+    expect(songs).toEqual([]); // Other's only song isn't in the live tiers
+  });
+
   it("returns null when the source no longer exists, so the playlist can't be updated", () => {
     expect(songsForSource({ kind: "songs", listId: "deleted" }, data)).toBeNull();
     expect(songsForSource({ kind: "tiers", context: "saved:deleted", tiers: ["S"] }, data)).toBeNull();

@@ -133,3 +133,11 @@ export function removeAddedSong(concert: Concert, songName: string): Concert {
     songs: concert.songs.filter((s) => !(s.addedByYou && s.name === songName)),
   };
 }
+
+// Pure: the concerts where a song was played (including inside a medley, or added by you), newest first
+export function concertsForSong(songKeyToFind: string, concerts: Concert[]): Concert[] {
+  const song = countSongs(concerts).find((s) => s.key === songKeyToFind);
+  if (!song) return [];
+  const ids = new Set(song.concertIds);
+  return concerts.filter((c) => ids.has(c.id)).sort((a, b) => b.date.localeCompare(a.date));
+}

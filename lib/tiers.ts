@@ -52,3 +52,24 @@ export const TIER_COLORS: Record<TierName, string> = {
   C: "var(--green)",
   D: "var(--indigo)",
 };
+
+// Pure: when a tier list is showing only some songs (like one artist's), the board only knows about those.
+// This puts its changes back into the full tiers without losing the hidden songs: each tier keeps its
+// hidden songs exactly where they were, the visible songs fill their old spots in their new order,
+// and songs that newly joined the tier go at the end.
+export function mergeFilteredTiers(full: Tiers, filtered: Tiers, visible: Set<string>): Tiers {
+  const result = {} as Tiers;
+  for (const tier of TIER_NAMES) {
+    const shown = filtered[tier] ?? [];
+    let next = 0;
+    const merged: string[] = [];
+    for (const key of full[tier] ?? []) {
+      if (!visible.has(key)) merged.push(key); // hidden: stays exactly where it was
+      else if (next < shown.length) merged.push(shown[next++]); // a visible song's spot: filled in the new order
+      // (a visible song that left this tier leaves no gap)
+    }
+    while (next < shown.length) merged.push(shown[next++]); // newly added to this tier
+    result[tier] = merged;
+  }
+  return result;
+}

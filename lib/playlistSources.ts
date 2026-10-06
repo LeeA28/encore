@@ -77,5 +77,8 @@ export function songsForSource(source: PlaylistSource, data: SourceData): Playli
     return list ? songsForPlaylist(countSongs(concertsInList(list, data.concerts))) : null;
   }
   const tierList = tierListFor(source.context, data);
-  return tierList ? tierSongsForPlaylist(tierList.items, tierList.tiers, source.tiers) : null;
+  if (!tierList) return null;
+  // Made while showing one artist: only that artist's songs
+  const items = source.artist ? tierList.items.filter((i) => i.artist === source.artist) : tierList.items;
+  return tierSongsForPlaylist(items, tierList.tiers, source.tiers);
 }
